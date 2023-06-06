@@ -173,19 +173,29 @@ hashset_to_array(PG_FUNCTION_ARGS)
 	int32		   *values;
 	int				nvalues;
 
+	char		   *sbitmap;
+	int32		   *svalues;
+
 	if (PG_ARGISNULL(0))
 		PG_RETURN_NULL();
 
 	set = (hashset_t *) PG_DETOAST_DATUM(PG_GETARG_DATUM(0));
+
+	sbitmap = set->data;
+	svalues = (int32 *) (set->data + set->maxelements / 8);
 
 	/* number of values to store in the array */
 	nvalues = set->nelements;
 	values = (int32 *) palloc(sizeof(int32) * nvalues);
 
 	idx = 0;
-	for (i = 0; i < set->nelements; i++)
+	for (i = 0; i < set->maxelements; i++)
 	{
-		values[idx++] = i;
+		int	byte = (i / 8);
+		int	bit = (i % 8);
+
+		if (sbitmap[byte] & (0x01 << bit))
+			values[idx++] = svalues[i];
 	}
 
 	Assert(idx == nvalues);
