@@ -50,6 +50,7 @@ PG_FUNCTION_INFO_V1(hashset_contains);
 PG_FUNCTION_INFO_V1(hashset_count);
 PG_FUNCTION_INFO_V1(hashset_merge);
 PG_FUNCTION_INFO_V1(hashset_init);
+PG_FUNCTION_INFO_V1(hashset_agg_add_set);
 PG_FUNCTION_INFO_V1(hashset_agg_add);
 PG_FUNCTION_INFO_V1(hashset_agg_final);
 PG_FUNCTION_INFO_V1(hashset_agg_combine);
@@ -66,6 +67,7 @@ Datum hashset_count(PG_FUNCTION_ARGS);
 Datum hashset_merge(PG_FUNCTION_ARGS);
 Datum hashset_init(PG_FUNCTION_ARGS);
 Datum hashset_agg_add(PG_FUNCTION_ARGS);
+Datum hashset_agg_add_set(PG_FUNCTION_ARGS);
 Datum hashset_agg_final(PG_FUNCTION_ARGS);
 Datum hashset_agg_combine(PG_FUNCTION_ARGS);
 
@@ -167,9 +169,14 @@ hashset_to_array(PG_FUNCTION_ARGS)
 {
 	int				i,
 					idx;
-	hashset_t	   *set = (hashset_t *) PG_DETOAST_DATUM(PG_GETARG_DATUM(0));
+	hashset_t	   *set;
 	int32		   *values;
 	int				nvalues;
+
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+
+	set = (hashset_t *) PG_DETOAST_DATUM(PG_GETARG_DATUM(0));
 
 	/* number of values to store in the array */
 	nvalues = set->nelements;
@@ -451,8 +458,74 @@ hashset_agg_add(PG_FUNCTION_ARGS)
 }
 
 Datum
+hashset_agg_add_set(PG_FUNCTION_ARGS)
+{
+	MemoryContext	oldcontext;
+	hashset_t *state;
+
+	MemoryContext aggcontext;
+
+	/* cannot be called directly because of internal-type argument */
+	if (!AggCheckCallContext(fcinfo, &aggcontext))
+		elog(ERROR, "hashset_add_add called in non-aggregate context");
+
+	/*
+	 * We want to skip NULL values altogether - we return either the existing
+	 * t-digest (if it already exists) or NULL.
+	 */
+	if (PG_ARGISNULL(1))
+	{
+		if (PG_ARGISNULL(0))
+			PG_RETURN_NULL();
+
+		/* if there already is a state accumulated, don't forget it */
+		PG_RETURN_DATUM(PG_GETARG_DATUM(0));
+	}
+
+	/* if there's no digest allocated, create it now */
+	if (PG_ARGISNULL(0))
+	{
+		oldcontext = MemoryContextSwitchTo(aggcontext);
+		state = hashset_allocate(64);
+		MemoryContextSwitchTo(oldcontext);
+	}
+	else
+		state = (hashset_t *) PG_GETARG_POINTER(0);
+
+	oldcontext = MemoryContextSwitchTo(aggcontext);
+
+	{
+		int			i;
+		char	   *bitmap;
+		int32	   *values;
+		hashset_t  *value;
+
+		value = PG_GETARG_HASHSET(1);
+
+		bitmap = value->data;
+		values = (int32 *) (value->data + value->maxelements / 8);
+
+		for (i = 0; i < value->maxelements; i++)
+		{
+			int	byte = (i / 8);
+			int	bit = (i % 8);
+
+			if (bitmap[byte] & (0x01 << bit))
+				state = hashset_add_element(state, values[i]);
+		}
+	}
+
+	MemoryContextSwitchTo(oldcontext);
+
+	PG_RETURN_POINTER(state);
+}
+
+Datum
 hashset_agg_final(PG_FUNCTION_ARGS)
 {
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+
 	PG_RETURN_POINTER(PG_GETARG_POINTER(0));
 }
 

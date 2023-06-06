@@ -83,3 +83,27 @@ CREATE AGGREGATE hashset(int) (
     COMBINEFUNC = hashset_agg_combine,
     PARALLEL = SAFE
 );
+
+
+CREATE OR REPLACE FUNCTION hashset_agg_add_set(p_pointer internal, p_value hashset)
+    RETURNS internal
+    AS 'hashset', 'hashset_agg_add_set'
+    LANGUAGE C IMMUTABLE;
+    
+CREATE OR REPLACE FUNCTION hashset_agg_final(p_pointer internal)
+    RETURNS hashset
+    AS 'hashset', 'hashset_agg_final'
+    LANGUAGE C IMMUTABLE;
+    
+CREATE OR REPLACE FUNCTION hashset_agg_combine(p_pointer internal, p_pointer2 internal)
+    RETURNS internal
+    AS 'hashset', 'hashset_agg_combine'
+    LANGUAGE C IMMUTABLE;
+
+CREATE AGGREGATE hashset(hashset) (
+    SFUNC = hashset_agg_add_set,
+    STYPE = internal,
+    FINALFUNC = hashset_agg_final,
+    COMBINEFUNC = hashset_agg_combine,
+    PARALLEL = SAFE
+);
