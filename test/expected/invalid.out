@@ -1,0 +1,4 @@
+SELECT '{1,2s}'::hashset;
+ERROR:  unexpected character "s" in hashset input
+LINE 1: SELECT '{1,2s}'::hashset;
+               ^

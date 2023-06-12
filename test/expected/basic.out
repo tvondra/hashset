@@ -1,0 +1,96 @@
+SELECT hashset_sorted('{1}'::hashset);
+ hashset_sorted 
+----------------
+ {1}
+(1 row)
+
+SELECT hashset_sorted('{1,2}'::hashset);
+ hashset_sorted 
+----------------
+ {1,2}
+(1 row)
+
+SELECT hashset_sorted('{1,2,3}'::hashset);
+ hashset_sorted 
+----------------
+ {1,2,3}
+(1 row)
+
+SELECT hashset_sorted('{1,2,3,4}'::hashset);
+ hashset_sorted 
+----------------
+ {1,2,3,4}
+(1 row)
+
+SELECT hashset_sorted('{1,2,3,4,5}'::hashset);
+ hashset_sorted 
+----------------
+ {1,2,3,4,5}
+(1 row)
+
+SELECT hashset_sorted('{1,2,3,4,5,6}'::hashset);
+ hashset_sorted 
+----------------
+ {1,2,3,4,5,6}
+(1 row)
+
+SELECT hashset_sorted('{1,2,3,4,5,6,7}'::hashset);
+ hashset_sorted  
+-----------------
+ {1,2,3,4,5,6,7}
+(1 row)
+
+SELECT hashset_sorted('{1,2,3,4,5,6,7,8}'::hashset);
+  hashset_sorted   
+-------------------
+ {1,2,3,4,5,6,7,8}
+(1 row)
+
+SELECT hashset_sorted('{1,2,3,4,5,6,7,8,9}'::hashset);
+   hashset_sorted    
+---------------------
+ {1,2,3,4,5,6,7,8,9}
+(1 row)
+
+SELECT hashset_sorted('{1,2,3,4,5,6,7,8,9,10}'::hashset);
+     hashset_sorted     
+------------------------
+ {1,2,3,4,5,6,7,8,9,10}
+(1 row)
+
+SELECT hashset_sorted('{1,2,3,4,5,6,7,8,9,10,11}'::hashset);
+      hashset_sorted       
+---------------------------
+ {1,2,3,4,5,6,7,8,9,10,11}
+(1 row)
+
+SELECT hashset_sorted('{1,2,3,4,5,6,7,8,9,10,11,12}'::hashset);
+        hashset_sorted        
+------------------------------
+ {1,2,3,4,5,6,7,8,9,10,11,12}
+(1 row)
+
+SELECT hashset_sorted('{1,2,3,4,5,6,7,8,9,10,11,12,13}'::hashset);
+         hashset_sorted          
+---------------------------------
+ {1,2,3,4,5,6,7,8,9,10,11,12,13}
+(1 row)
+
+SELECT hashset_sorted('{1,2,3,4,5,6,7,8,9,10,11,12,13,14}'::hashset);
+           hashset_sorted           
+------------------------------------
+ {1,2,3,4,5,6,7,8,9,10,11,12,13,14}
+(1 row)
+
+SELECT hashset_sorted('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}'::hashset);
+            hashset_sorted             
+---------------------------------------
+ {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+(1 row)
+
+SELECT hashset_sorted('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16}'::hashset);
+              hashset_sorted              
+------------------------------------------
+ {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16}
+(1 row)
+

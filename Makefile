@@ -2,12 +2,13 @@ MODULE_big = hashset
 OBJS = hashset.o
 
 EXTENSION = hashset
-DATA = hashset--1.0.0.sql
+DATA = hashset--0.0.1.sql
 MODULES = hashset
 
 CFLAGS=`pg_config --includedir-server`
 
-REGRESS      = basic cast conversions incremental parallel_query value_count_api trimmed_aggregates
+REGRESS = prelude basic random table invalid
+
 REGRESS_OPTS = --inputdir=test
 
 PG_CONFIG = pg_config

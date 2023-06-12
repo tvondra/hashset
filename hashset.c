@@ -40,6 +40,8 @@ static bool hashset_contains_element(hashset_t *set, int32 value);
 static Datum int32_to_array(FunctionCallInfo fcinfo, int32 * d, int len);
 
 #define PG_GETARG_HASHSET(x)	(hashset_t *) PG_DETOAST_DATUM(PG_GETARG_DATUM(x))
+#define CEIL_DIV(a, b) (((a) + (b) - 1) / (b))
+#define HASHSET_STEP 13
 
 PG_FUNCTION_INFO_V1(hashset_in);
 PG_FUNCTION_INFO_V1(hashset_out);
@@ -73,7 +75,6 @@ Datum hashset_agg_combine(PG_FUNCTION_ARGS);
 
 Datum hashset_to_array(PG_FUNCTION_ARGS);
 
-/* allocate hashset with enough space for a requested number of centroids */
 static hashset_t *
 hashset_allocate(int maxelements)
 {
@@ -81,11 +82,19 @@ hashset_allocate(int maxelements)
 	hashset_t  *set;
 	char	   *ptr;
 
+	/*
+	 * Ensure that maxelements is not divisible by HASHSET_STEP;
+	 * i.e. the step size used in hashset_add_element()
+	 * and hashset_contains_element().
+	 */
+	while (maxelements % HASHSET_STEP == 0) {
+		maxelements++;
+	}
+
 	len = offsetof(hashset_t, data);
-	len += (maxelements + 7) / 8;
+	len += CEIL_DIV(maxelements, 8);
 	len += maxelements * sizeof(int32);
 
-	/* we pre-allocate the array for all centroids and also the buffer for incoming data */
 	ptr = palloc0(len);
 	SET_VARSIZE(ptr, len);
 
@@ -95,7 +104,6 @@ hashset_allocate(int maxelements)
 	set->maxelements = maxelements;
 	set->nelements = 0;
 
-	/* new tdigest are automatically storing mean */
 	set->flags |= 0;
 
 	return set;
@@ -104,30 +112,124 @@ hashset_allocate(int maxelements)
 Datum
 hashset_in(PG_FUNCTION_ARGS)
 {
-//	int			i, r;
-//	char	   *str = PG_GETARG_CSTRING(0);
-//	hashset_t  *set = NULL;
+	char *str = PG_GETARG_CSTRING(0);
+	char *endptr;
+	int32 len = strlen(str);
+	hashset_t *set;
 
-	PG_RETURN_NULL();
+	/* Check the opening and closing braces */
+	if (str[0] != '{' || str[len - 1] != '}')
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+				errmsg("invalid input syntax for hashset: \"%s\"", str),
+				errdetail("Hashset representation must start with \"{\" and end with \"}\".")));
+	}
+
+	/* Start parsing from the first number (after the opening brace) */
+	str++;
+
+	/* Initial size based on input length (arbitrary, could be optimized) */
+	set = hashset_allocate(len/2);
+
+	while (true)
+	{
+		int64 value = strtol(str, &endptr, 10);
+
+		if (errno == ERANGE || value < PG_INT32_MIN || value > PG_INT32_MAX)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+					errmsg("value \"%s\" is out of range for type %s", str,
+					"integer")));
+		}
+
+		/* Add the value to the hashset, resize if needed */
+		if (set->nelements >= set->maxelements)
+		{
+			set = hashset_resize(set);
+		}
+		set = hashset_add_element(set, (int32)value);
+
+		/* Error handling for strtol */
+		if (endptr == str)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+					errmsg("invalid input syntax for integer: \"%s\"", str)));
+		}
+		else if (*endptr == ',')
+		{
+			str = endptr + 1;  /* Move to the next number */
+		}
+		else if (*endptr == '}')
+		{
+			break;  /* End of the hashset */
+		}
+		else
+		{
+			/* Unexpected character */
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+					errmsg("unexpected character \"%c\" in hashset input", *endptr)));
+		}
+	}
+
+	PG_RETURN_POINTER(set);
 }
 
 Datum
 hashset_out(PG_FUNCTION_ARGS)
 {
-	//int			i;
-	//tdigest_t  *digest = (tdigest_t *) PG_DETOAST_DATUM(PG_GETARG_DATUM(0));
-	StringInfoData	str;
+	hashset_t *set = (hashset_t *) PG_DETOAST_DATUM(PG_GETARG_DATUM(0));
+	char *bitmap;
+	int32 *values;
+	int i;
+	StringInfoData str;
 
+	/* Calculate the pointer to the bitmap and values array */
+	bitmap = set->data;
+	values = (int32 *) (set->data + CEIL_DIV(set->maxelements, 8));
+
+	/* Initialize the StringInfo buffer */
 	initStringInfo(&str);
 
+	/* Append the opening brace for the output hashset string */
+	appendStringInfoChar(&str, '{');
+
+	/* Loop through the elements and append them to the string */
+	for (i = 0; i < set->maxelements; i++)
+	{
+		int byte = i / 8;
+		int bit = i % 8;
+
+		/* Check if the bit in the bitmap is set */
+		if (bitmap[byte] & (0x01 << bit))
+		{
+			/* Append the value */
+			if (str.len > 1)
+				appendStringInfoChar(&str, ',');
+			appendStringInfo(&str, "%d", values[i]);
+		}
+	}
+
+	/* Append the closing brace for the output hashset string */
+	appendStringInfoChar(&str, '}');
+
+	/* Return the resulting string */
 	PG_RETURN_CSTRING(str.data);
 }
 
 Datum
 hashset_recv(PG_FUNCTION_ARGS)
 {
-	//StringInfo	buf = (StringInfo) PG_GETARG_POINTER(0);
-	hashset_t  *set= NULL;
+	StringInfo	buf = (StringInfo) PG_GETARG_POINTER(0);
+	hashset_t	*set;
+
+	set = (hashset_t *) palloc0(sizeof(hashset_t));
+	set->flags = pq_getmsgint(buf, 4);
+	set->maxelements = pq_getmsgint64(buf);
+	set->nelements = pq_getmsgint(buf, 4);
 
 	PG_RETURN_POINTER(set);
 }
@@ -148,22 +250,6 @@ hashset_send(PG_FUNCTION_ARGS)
 }
 
 
-/*
- * tdigest_to_array
- *		Transform the tdigest into an array of double values.
- *
- * The whole digest is stored in a single "double precision" array, which
- * may be a bit confusing and perhaps fragile if more fields need to be
- * added in the future. The initial elements are flags, count (number of
- * items added to the digest), compression (determines the limit on number
- * of centroids) and current number of centroids. Follows stream of values
- * encoding the centroids in pairs of (mean, count).
- *
- * We make sure to always print mean, even for tdigests in the older format
- * storing sum for centroids. Otherwise the "mean" key would be confusing.
- * But we don't call tdigest_update_format, and instead we simply update the
- * flags and convert the sum/mean values.
- */
 Datum
 hashset_to_array(PG_FUNCTION_ARGS)
 {
@@ -182,7 +268,7 @@ hashset_to_array(PG_FUNCTION_ARGS)
 	set = (hashset_t *) PG_DETOAST_DATUM(PG_GETARG_DATUM(0));
 
 	sbitmap = set->data;
-	svalues = (int32 *) (set->data + set->maxelements / 8);
+	svalues = (int32 *) (set->data + CEIL_DIV(set->maxelements, 8));
 
 	/* number of values to store in the array */
 	nvalues = set->nelements;
@@ -231,13 +317,14 @@ int32_to_array(FunctionCallInfo fcinfo, int32 *d, int len)
 static hashset_t *
 hashset_resize(hashset_t * set)
 {
-	int				i;
-	hashset_t	   *new = hashset_allocate(set->maxelements * 2);
-	char		   *bitmap;
-	int32		   *values;
+	int		i;
+	hashset_t	*new = hashset_allocate(set->maxelements * 2);
+	char	*bitmap;
+	int32	*values;
 
+	/* Calculate the pointer to the bitmap and values array */
 	bitmap = set->data;
-	values = (int32 *) (set->data + set->maxelements / 8);
+	values = (int32 *) (set->data + CEIL_DIV(set->maxelements, 8));
 
 	for (i = 0; i < set->maxelements; i++)
 	{
@@ -266,7 +353,7 @@ hashset_add_element(hashset_t *set, int32 value)
 	hash = ((uint32) value * 7691 + 4201) % set->maxelements;
 
 	bitmap = set->data;
-	values = (int32 *) (set->data + set->maxelements / 8);
+	values = (int32 *) (set->data + CEIL_DIV(set->maxelements, 8));
 
 	while (true)
 	{
@@ -280,7 +367,7 @@ hashset_add_element(hashset_t *set, int32 value)
 			if (values[hash] == value)
 				break;
 
-			hash = (hash + 13) % set->maxelements;
+			hash = (hash + HASHSET_STEP) % set->maxelements;
 			continue;
 		}
 
@@ -308,7 +395,7 @@ hashset_contains_element(hashset_t *set, int32 value)
 	hash = ((uint32) value * 7691 + 4201) % set->maxelements;
 
 	bitmap = set->data;
-	values = (int32 *) (set->data + set->maxelements / 8);
+	values = (int32 *) (set->data + CEIL_DIV(set->maxelements, 8));
 
 	while (true)
 	{
@@ -324,10 +411,8 @@ hashset_contains_element(hashset_t *set, int32 value)
 			return true;
 
 		/* move to the next element */
-		hash = (hash + 13) % set->maxelements;
+		hash = (hash + HASHSET_STEP) % set->maxelements;
 	}
-
-	return set;
 }
 
 Datum
@@ -347,7 +432,10 @@ hashset_add(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(0))
 		set = hashset_allocate(64);
 	else
-		set = (hashset_t *) PG_GETARG_POINTER(0);
+	{
+		/* make sure we are working with a non-toasted and non-shared copy of the input */
+		set = (hashset_t *) PG_DETOAST_DATUM_COPY(PG_GETARG_DATUM(0));
+	}
 
 	set = hashset_add_element(set, PG_GETARG_INT32(1));
 
@@ -377,7 +465,7 @@ hashset_merge(PG_FUNCTION_ARGS)
 	setb = PG_GETARG_HASHSET(1);
 
 	bitmap = setb->data;
-	values = (int32 *) (setb->data + setb->maxelements / 8);
+	values = (int32 *) (setb->data + CEIL_DIV(setb->maxelements, 8));
 
 	for (i = 0; i < setb->maxelements; i++)
 	{
@@ -439,7 +527,7 @@ hashset_agg_add(PG_FUNCTION_ARGS)
 
 	/*
 	 * We want to skip NULL values altogether - we return either the existing
-	 * t-digest (if it already exists) or NULL.
+	 * hashset (if it already exists) or NULL.
 	 */
 	if (PG_ARGISNULL(1))
 	{
@@ -450,7 +538,7 @@ hashset_agg_add(PG_FUNCTION_ARGS)
 		PG_RETURN_DATUM(PG_GETARG_DATUM(0));
 	}
 
-	/* if there's no digest allocated, create it now */
+	/* if there's no hashset allocated, create it now */
 	if (PG_ARGISNULL(0))
 	{
 		oldcontext = MemoryContextSwitchTo(aggcontext);
@@ -481,7 +569,7 @@ hashset_agg_add_set(PG_FUNCTION_ARGS)
 
 	/*
 	 * We want to skip NULL values altogether - we return either the existing
-	 * t-digest (if it already exists) or NULL.
+	 * hashset (if it already exists) or NULL.
 	 */
 	if (PG_ARGISNULL(1))
 	{
@@ -492,7 +580,7 @@ hashset_agg_add_set(PG_FUNCTION_ARGS)
 		PG_RETURN_DATUM(PG_GETARG_DATUM(0));
 	}
 
-	/* if there's no digest allocated, create it now */
+	/* if there's no hashset allocated, create it now */
 	if (PG_ARGISNULL(0))
 	{
 		oldcontext = MemoryContextSwitchTo(aggcontext);
@@ -513,7 +601,7 @@ hashset_agg_add_set(PG_FUNCTION_ARGS)
 		value = PG_GETARG_HASHSET(1);
 
 		bitmap = value->data;
-		values = (int32 *) (value->data + value->maxelements / 8);
+		values = (int32 *) (value->data + CEIL_DIV(value->maxelements, 8));
 
 		for (i = 0; i < value->maxelements; i++)
 		{
@@ -558,7 +646,7 @@ hashset_agg_combine(PG_FUNCTION_ARGS)
 	int32		 *values;
 
 	if (!AggCheckCallContext(fcinfo, &aggcontext))
-		elog(ERROR, "tdigest_combine called in non-aggregate context");
+		elog(ERROR, "hashset_agg_combine called in non-aggregate context");
 
 	/* if no "merged" state yet, try creating it */
 	if (PG_ARGISNULL(0))
@@ -570,7 +658,7 @@ hashset_agg_combine(PG_FUNCTION_ARGS)
 		/* the second argument is not NULL, so copy it */
 		src = (hashset_t *) PG_GETARG_POINTER(1);
 
-		/* copy the digest into the right long-lived memory context */
+		/* copy the hashset into the right long-lived memory context */
 		oldcontext = MemoryContextSwitchTo(aggcontext);
 		src = hashset_copy(src);
 		MemoryContextSwitchTo(oldcontext);
@@ -590,7 +678,7 @@ hashset_agg_combine(PG_FUNCTION_ARGS)
 	dst = (hashset_t *) PG_GETARG_POINTER(0);
 
 	bitmap = src->data;
-	values = (int32 *) (src->data + src->maxelements / 8);
+	values = (int32 *) (src->data + CEIL_DIV(src->maxelements, 8));
 
 	for (i = 0; i < src->maxelements; i++)
 	{
