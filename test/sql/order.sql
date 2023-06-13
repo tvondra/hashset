@@ -27,3 +27,34 @@ SELECT '{2}'::hashset = '{3}'::hashset; -- false
 SELECT '{2}'::hashset <> '{1}'::hashset; -- true
 SELECT '{2}'::hashset <> '{2}'::hashset; -- false
 SELECT '{2}'::hashset <> '{3}'::hashset; -- true
+
+CREATE OR REPLACE FUNCTION generate_random_hashset(num_elements INT)
+RETURNS hashset AS $$
+DECLARE
+  element INT;
+  random_set hashset;
+BEGIN
+  random_set := hashset_init(num_elements);
+
+  FOR i IN 1..num_elements LOOP
+    element := floor(random() * 1000)::INT;
+    random_set := hashset_add(random_set, element);
+  END LOOP;
+
+  RETURN random_set;
+END;
+$$ LANGUAGE plpgsql;
+
+SELECT setseed(0.123465);
+
+CREATE TABLE hashset_order_test AS
+SELECT generate_random_hashset(3) AS hashset_col
+FROM generate_series(1,1000)
+UNION
+SELECT generate_random_hashset(2)
+FROM generate_series(1,1000);
+
+SELECT hashset_col
+FROM hashset_order_test
+ORDER BY hashset_col
+LIMIT 20;

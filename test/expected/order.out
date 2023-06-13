@@ -116,3 +116,59 @@ SELECT '{2}'::hashset <> '{3}'::hashset; -- true
  t
 (1 row)
 
+CREATE OR REPLACE FUNCTION generate_random_hashset(num_elements INT)
+RETURNS hashset AS $$
+DECLARE
+  element INT;
+  random_set hashset;
+BEGIN
+  random_set := hashset_init(num_elements);
+
+  FOR i IN 1..num_elements LOOP
+    element := floor(random() * 1000)::INT;
+    random_set := hashset_add(random_set, element);
+  END LOOP;
+
+  RETURN random_set;
+END;
+$$ LANGUAGE plpgsql;
+SELECT setseed(0.123465);
+ setseed 
+---------
+ 
+(1 row)
+
+CREATE TABLE hashset_order_test AS
+SELECT generate_random_hashset(3) AS hashset_col
+FROM generate_series(1,1000)
+UNION
+SELECT generate_random_hashset(2)
+FROM generate_series(1,1000);
+SELECT hashset_col
+FROM hashset_order_test
+ORDER BY hashset_col
+LIMIT 20;
+ hashset_col 
+-------------
+ {2,857}
+ {3,85,507}
+ {3,569,891}
+ {3,867,610}
+ {5,207,283}
+ {5,283,972}
+ {5,550,991}
+ {5,606,148}
+ {5,734}
+ {5,862}
+ {5,872}
+ {6,431}
+ {6,444,929}
+ {6,521}
+ {6,592}
+ {7,878,229}
+ {8,14,859}
+ {8,605}
+ {8,654}
+ {8,698}
+(20 rows)
+

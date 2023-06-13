@@ -863,53 +863,15 @@ Datum hashset_hash(PG_FUNCTION_ARGS)
 Datum
 hashset_lt(PG_FUNCTION_ARGS)
 {
-	hashset_t *a = PG_GETARG_HASHSET(0);
-	hashset_t *b = PG_GETARG_HASHSET(1);
+    hashset_t *a = PG_GETARG_HASHSET(0);
+    hashset_t *b = PG_GETARG_HASHSET(1);
+    int32 cmp;
 
-	char *bitmap_a, *bitmap_b;
-	int32 *values_a, *values_b;
-	int i;
+    cmp = DatumGetInt32(DirectFunctionCall2(hashset_cmp,
+                                            PointerGetDatum(a),
+                                            PointerGetDatum(b)));
 
-	bitmap_a = a->data;
-	values_a = (int32 *)(a->data + CEIL_DIV(a->maxelements, 8));
-
-	bitmap_b = b->data;
-	values_b = (int32 *)(b->data + CEIL_DIV(b->maxelements, 8));
-
-	/* Compare elements in a lexicographic manner */
-	for (i = 0; i < Min(a->maxelements, b->maxelements); i++)
-	{
-		int byte = (i / 8);
-		int bit = (i % 8);
-
-		bool has_elem_a = bitmap_a[byte] & (0x01 << bit);
-		bool has_elem_b = bitmap_b[byte] & (0x01 << bit);
-
-		if (has_elem_a && has_elem_b)
-		{
-			int32 value_a = values_a[i];
-			int32 value_b = values_b[i];
-
-			if (value_a < value_b)
-				PG_RETURN_BOOL(true);
-			else if (value_a > value_b)
-				PG_RETURN_BOOL(false);
-
-		}
-		else if (has_elem_a)
-			PG_RETURN_BOOL(false);
-		else if (has_elem_b)
-			PG_RETURN_BOOL(true);
-	}
-
-	/*
-	 * If all elements are equal up to the shorter hashset length,
-	 * then the hashset with fewer elements is considered "less than"
-	 */
-	if (a->maxelements < b->maxelements)
-		PG_RETURN_BOOL(true);
-	else
-		PG_RETURN_BOOL(false);
+    PG_RETURN_BOOL(cmp < 0);
 }
 
 
@@ -918,13 +880,13 @@ hashset_le(PG_FUNCTION_ARGS)
 {
 	hashset_t *a = PG_GETARG_HASHSET(0);
 	hashset_t *b = PG_GETARG_HASHSET(1);
+	int32 cmp;
 
-	/* If a equals b, or a is less than b, then a is less than or equal to b */
-	if (DatumGetBool(DirectFunctionCall2(hashset_equals, PointerGetDatum(a), PointerGetDatum(b))) ||
-		DatumGetBool(DirectFunctionCall2(hashset_lt, PointerGetDatum(a), PointerGetDatum(b))))
-		PG_RETURN_BOOL(true);
+	cmp = DatumGetInt32(DirectFunctionCall2(hashset_cmp,
+											PointerGetDatum(a),
+											PointerGetDatum(b)));
 
-	PG_RETURN_BOOL(false);
+	PG_RETURN_BOOL(cmp <= 0);
 }
 
 
@@ -933,12 +895,13 @@ hashset_gt(PG_FUNCTION_ARGS)
 {
 	hashset_t *a = PG_GETARG_HASHSET(0);
 	hashset_t *b = PG_GETARG_HASHSET(1);
+	int32 cmp;
 
-	/* If a is not less than or equal to b, then a is greater than b */
-	if (!DatumGetBool(DirectFunctionCall2(hashset_le, PointerGetDatum(a), PointerGetDatum(b))))
-		PG_RETURN_BOOL(true);
+	cmp = DatumGetInt32(DirectFunctionCall2(hashset_cmp,
+											PointerGetDatum(a),
+											PointerGetDatum(b)));
 
-	PG_RETURN_BOOL(false);
+	PG_RETURN_BOOL(cmp > 0);
 }
 
 
@@ -947,13 +910,13 @@ hashset_ge(PG_FUNCTION_ARGS)
 {
 	hashset_t *a = PG_GETARG_HASHSET(0);
 	hashset_t *b = PG_GETARG_HASHSET(1);
+	int32 cmp;
 
-	/* If a equals b, or a is not less than b, then a is greater than or equal to b */
-	if (DatumGetBool(DirectFunctionCall2(hashset_equals, PointerGetDatum(a), PointerGetDatum(b))) ||
-		!DatumGetBool(DirectFunctionCall2(hashset_lt, PointerGetDatum(a), PointerGetDatum(b))))
-		PG_RETURN_BOOL(true);
+	cmp = DatumGetInt32(DirectFunctionCall2(hashset_cmp,
+											PointerGetDatum(a),
+											PointerGetDatum(b)));
 
-	PG_RETURN_BOOL(false);
+	PG_RETURN_BOOL(cmp >= 0);
 }
 
 
@@ -965,7 +928,7 @@ hashset_cmp(PG_FUNCTION_ARGS)
 
 	char *bitmap_a, *bitmap_b;
 	int32 *values_a, *values_b;
-	int i;
+	int i = 0, j = 0;
 
 	bitmap_a = a->data;
 	values_a = (int32 *)(a->data + CEIL_DIV(a->maxelements, 8));
@@ -973,45 +936,52 @@ hashset_cmp(PG_FUNCTION_ARGS)
 	bitmap_b = b->data;
 	values_b = (int32 *)(b->data + CEIL_DIV(b->maxelements, 8));
 
-	/*
-	 * Iterate through the elements
-	 */
-	for (i = 0; i < Min(a->maxelements, b->maxelements); i++)
+	/* Iterate over the elements in each hashset independently */
+	while(i < a->maxelements && j < b->maxelements)
 	{
-		int byte = (i / 8);
-		int bit = (i % 8);
+		int byte_a = (i / 8);
+		int bit_a = (i % 8);
 
-		bool a_contains = bitmap_a[byte] & (0x01 << bit);
-		bool b_contains = bitmap_b[byte] & (0x01 << bit);
+		int byte_b = (j / 8);
+		int bit_b = (j % 8);
 
-		if (a_contains && b_contains)
+		bool has_elem_a = bitmap_a[byte_a] & (0x01 << bit_a);
+		bool has_elem_b = bitmap_b[byte_b] & (0x01 << bit_b);
+
+		int32 value_a;
+		int32 value_b;
+
+		/* Skip if position is empty in either bitmap */
+		if (!has_elem_a)
 		{
-			int32 value_a = values_a[i];
-			int32 value_b = values_b[i];
-
-			if (value_a < value_b)
-				PG_RETURN_INT32(-1);
-			else if (value_a > value_b)
-				PG_RETURN_INT32(1);
+			i++;
+			continue;
 		}
-		else if (a_contains)
+
+		if (!has_elem_b)
 		{
-			PG_RETURN_INT32(1);
+			j++;
+			continue;
 		}
-		else if (b_contains)
-		{
+
+		/* Both hashsets have an element at the current position */
+		value_a = values_a[i++];
+		value_b = values_b[j++];
+
+		if (value_a < value_b)
 			PG_RETURN_INT32(-1);
-		}
+		else if (value_a > value_b)
+			PG_RETURN_INT32(1);
 	}
 
 	/*
-	 * If we got here, the elements in the overlap are equal.
-	 * We need to check the number of elements to determine the order.
+	 * If all compared elements are equal,
+	 * then compare the remaining elements in the larger hashset
 	 */
-	if (a->nelements < b->nelements)
-		PG_RETURN_INT32(-1);
-	else if (a->nelements > b->nelements)
+	if (i < a->maxelements)
 		PG_RETURN_INT32(1);
+	else if (j < b->maxelements)
+		PG_RETURN_INT32(-1);
 	else
 		PG_RETURN_INT32(0);
 }
