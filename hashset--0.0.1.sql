@@ -107,3 +107,118 @@ CREATE AGGREGATE hashset(hashset) (
     COMBINEFUNC = hashset_agg_combine,
     PARALLEL = SAFE
 );
+
+
+CREATE OR REPLACE FUNCTION hashset_equals(hashset, hashset)
+    RETURNS bool
+    AS 'hashset', 'hashset_equals'
+    LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OPERATOR = (
+    LEFTARG = hashset,
+    RIGHTARG = hashset,
+    PROCEDURE = hashset_equals,
+    COMMUTATOR = =,
+    HASHES
+);
+
+CREATE OR REPLACE FUNCTION hashset_neq(hashset, hashset)
+    RETURNS bool
+    AS 'hashset', 'hashset_neq'
+    LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OPERATOR <> (
+    LEFTARG = hashset,
+    RIGHTARG = hashset,
+    PROCEDURE = hashset_neq,
+    COMMUTATOR = '<>',
+    NEGATOR = '=',
+    RESTRICT = neqsel,
+    JOIN = neqjoinsel,
+    HASHES
+);
+
+
+CREATE OR REPLACE FUNCTION hashset_hash(hashset)
+    RETURNS integer
+    AS 'hashset', 'hashset_hash'
+    LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OPERATOR CLASS hashset_hash_ops
+    DEFAULT FOR TYPE hashset USING hash AS
+    OPERATOR 1 = (hashset, hashset),
+    FUNCTION 1 hashset_hash(hashset);
+
+CREATE OR REPLACE FUNCTION hashset_lt(hashset, hashset)
+    RETURNS bool
+    AS 'hashset', 'hashset_lt'
+    LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION hashset_le(hashset, hashset)
+    RETURNS boolean
+    AS 'hashset', 'hashset_le'
+    LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION hashset_gt(hashset, hashset)
+    RETURNS boolean
+    AS 'hashset', 'hashset_gt'
+    LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION hashset_ge(hashset, hashset)
+    RETURNS boolean
+    AS 'hashset', 'hashset_ge'
+    LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION hashset_cmp(hashset, hashset)
+    RETURNS integer
+    AS 'hashset', 'hashset_cmp'
+    LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OPERATOR < (
+    LEFTARG = hashset,
+    RIGHTARG = hashset,
+    PROCEDURE = hashset_lt,
+    COMMUTATOR = >,
+    NEGATOR = >=,
+    RESTRICT = scalarltsel,
+    JOIN = scalarltjoinsel
+);
+
+CREATE OPERATOR <= (
+    PROCEDURE = hashset_le,
+    LEFTARG = hashset,
+    RIGHTARG = hashset,
+    COMMUTATOR = '>=',
+    NEGATOR = '>',
+    RESTRICT = scalarltsel,
+    JOIN = scalarltjoinsel
+);
+
+CREATE OPERATOR > (
+    PROCEDURE = hashset_gt,
+    LEFTARG = hashset,
+    RIGHTARG = hashset,
+    COMMUTATOR = '<',
+    NEGATOR = '<=',
+    RESTRICT = scalargtsel,
+    JOIN = scalargtjoinsel
+);
+
+CREATE OPERATOR >= (
+    PROCEDURE = hashset_ge,
+    LEFTARG = hashset,
+    RIGHTARG = hashset,
+    COMMUTATOR = '<=',
+    NEGATOR = '<',
+    RESTRICT = scalargtsel,
+    JOIN = scalargtjoinsel
+);
+
+CREATE OPERATOR CLASS hashset_btree_ops
+    DEFAULT FOR TYPE hashset USING btree AS
+    OPERATOR 1 < (hashset, hashset),
+    OPERATOR 2 <= (hashset, hashset),
+    OPERATOR 3 = (hashset, hashset),
+    OPERATOR 4 >= (hashset, hashset),
+    OPERATOR 5 > (hashset, hashset),
+    FUNCTION 1 hashset_cmp(hashset, hashset);

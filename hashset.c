@@ -19,6 +19,7 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "catalog/pg_type.h"
+#include "common/hashfn.h"
 
 PG_MODULE_MAGIC;
 
@@ -29,7 +30,8 @@ typedef struct hashset_t {
 	int32		vl_len_;		/* varlena header (do not touch directly!) */
 	int32		flags;			/* reserved for future use (versioning, ...) */
 	int32		maxelements;	/* max number of element we have space for */
-	int32		nelements;			/* number of items added to the hashset */
+	int32		nelements;		/* number of items added to the hashset */
+	int32		hashfn_id;		/* ID of the hash function used */
 	char		data[FLEXIBLE_ARRAY_MEMBER];
 } hashset_t;
 
@@ -42,6 +44,7 @@ static Datum int32_to_array(FunctionCallInfo fcinfo, int32 * d, int len);
 #define PG_GETARG_HASHSET(x)	(hashset_t *) PG_DETOAST_DATUM(PG_GETARG_DATUM(x))
 #define CEIL_DIV(a, b) (((a) + (b) - 1) / (b))
 #define HASHSET_STEP 13
+#define JENKINS_LOOKUP3_HASHFN_ID 1
 
 PG_FUNCTION_INFO_V1(hashset_in);
 PG_FUNCTION_INFO_V1(hashset_out);
@@ -56,8 +59,15 @@ PG_FUNCTION_INFO_V1(hashset_agg_add_set);
 PG_FUNCTION_INFO_V1(hashset_agg_add);
 PG_FUNCTION_INFO_V1(hashset_agg_final);
 PG_FUNCTION_INFO_V1(hashset_agg_combine);
-
 PG_FUNCTION_INFO_V1(hashset_to_array);
+PG_FUNCTION_INFO_V1(hashset_equals);
+PG_FUNCTION_INFO_V1(hashset_neq);
+PG_FUNCTION_INFO_V1(hashset_hash);
+PG_FUNCTION_INFO_V1(hashset_lt);
+PG_FUNCTION_INFO_V1(hashset_le);
+PG_FUNCTION_INFO_V1(hashset_gt);
+PG_FUNCTION_INFO_V1(hashset_ge);
+PG_FUNCTION_INFO_V1(hashset_cmp);
 
 Datum hashset_in(PG_FUNCTION_ARGS);
 Datum hashset_out(PG_FUNCTION_ARGS);
@@ -72,8 +82,15 @@ Datum hashset_agg_add(PG_FUNCTION_ARGS);
 Datum hashset_agg_add_set(PG_FUNCTION_ARGS);
 Datum hashset_agg_final(PG_FUNCTION_ARGS);
 Datum hashset_agg_combine(PG_FUNCTION_ARGS);
-
 Datum hashset_to_array(PG_FUNCTION_ARGS);
+Datum hashset_equals(PG_FUNCTION_ARGS);
+Datum hashset_neq(PG_FUNCTION_ARGS);
+Datum hashset_hash(PG_FUNCTION_ARGS);
+Datum hashset_lt(PG_FUNCTION_ARGS);
+Datum hashset_le(PG_FUNCTION_ARGS);
+Datum hashset_gt(PG_FUNCTION_ARGS);
+Datum hashset_ge(PG_FUNCTION_ARGS);
+Datum hashset_cmp(PG_FUNCTION_ARGS);
 
 static hashset_t *
 hashset_allocate(int maxelements)
@@ -87,9 +104,8 @@ hashset_allocate(int maxelements)
 	 * i.e. the step size used in hashset_add_element()
 	 * and hashset_contains_element().
 	 */
-	while (maxelements % HASHSET_STEP == 0) {
+	while (maxelements % HASHSET_STEP == 0)
 		maxelements++;
-	}
 
 	len = offsetof(hashset_t, data);
 	len += CEIL_DIV(maxelements, 8);
@@ -103,6 +119,7 @@ hashset_allocate(int maxelements)
 	set->flags = 0;
 	set->maxelements = maxelements;
 	set->nelements = 0;
+	set->hashfn_id = JENKINS_LOOKUP3_HASHFN_ID;
 
 	set->flags |= 0;
 
@@ -220,33 +237,69 @@ hashset_out(PG_FUNCTION_ARGS)
 	PG_RETURN_CSTRING(str.data);
 }
 
-Datum
-hashset_recv(PG_FUNCTION_ARGS)
-{
-	StringInfo	buf = (StringInfo) PG_GETARG_POINTER(0);
-	hashset_t	*set;
-
-	set = (hashset_t *) palloc0(sizeof(hashset_t));
-	set->flags = pq_getmsgint(buf, 4);
-	set->maxelements = pq_getmsgint64(buf);
-	set->nelements = pq_getmsgint(buf, 4);
-
-	PG_RETURN_POINTER(set);
-}
 
 Datum
 hashset_send(PG_FUNCTION_ARGS)
 {
 	hashset_t  *set = (hashset_t *) PG_DETOAST_DATUM(PG_GETARG_DATUM(0));
 	StringInfoData buf;
+	int32 data_size;
 
+	/* Begin constructing the message */
 	pq_begintypsend(&buf);
 
+	/* Send the non-data fields */
 	pq_sendint(&buf, set->flags, 4);
-	pq_sendint64(&buf, set->maxelements);
+	pq_sendint(&buf, set->maxelements, 4);
 	pq_sendint(&buf, set->nelements, 4);
+	pq_sendint(&buf, set->hashfn_id, 4);
+
+	/* Compute and send the size of the data field */
+	data_size = VARSIZE(set) - offsetof(hashset_t, data);
+	pq_sendbytes(&buf, set->data, data_size);
 
 	PG_RETURN_BYTEA_P(pq_endtypsend(&buf));
+}
+
+
+Datum
+hashset_recv(PG_FUNCTION_ARGS)
+{
+	StringInfo	buf = (StringInfo) PG_GETARG_POINTER(0);
+	hashset_t	*set;
+	int32		data_size;
+	Size		total_size;
+	const char	*binary_data;
+
+	/* Read fields from buffer */
+	int32 flags = pq_getmsgint(buf, 4);
+	int32 maxelements = pq_getmsgint(buf, 4);
+	int32 nelements = pq_getmsgint(buf, 4);
+	int32 hashfn_id = pq_getmsgint(buf, 4);
+
+	/* Compute the size of the data field */
+	data_size = buf->len - buf->cursor;
+
+	/* Read the binary data */
+	binary_data = pq_getmsgbytes(buf, data_size);
+
+	/* Compute total size of hashset_t */
+	total_size = offsetof(hashset_t, data) + data_size;
+
+	/* Allocate memory for hashset including the data field */
+	set = (hashset_t *) palloc0(total_size);
+
+	/* Set the size of the variable-length data structure */
+	SET_VARSIZE(set, total_size);
+
+	/* Populate the structure */
+	set->flags = flags;
+	set->maxelements = maxelements;
+	set->nelements = nelements;
+	set->hashfn_id = hashfn_id;
+	memcpy(set->data, binary_data, data_size);
+
+	PG_RETURN_POINTER(set);
 }
 
 
@@ -317,10 +370,10 @@ int32_to_array(FunctionCallInfo fcinfo, int32 *d, int len)
 static hashset_t *
 hashset_resize(hashset_t * set)
 {
-	int		i;
+	int			i;
 	hashset_t	*new = hashset_allocate(set->maxelements * 2);
-	char	*bitmap;
-	int32	*values;
+	char		*bitmap;
+	int32		*values;
 
 	/* Calculate the pointer to the bitmap and values array */
 	bitmap = set->data;
@@ -350,7 +403,16 @@ hashset_add_element(hashset_t *set, int32 value)
 	if (set->nelements > set->maxelements * 0.75)
 		set = hashset_resize(set);
 
-	hash = ((uint32) value * 7691 + 4201) % set->maxelements;
+	if (set->hashfn_id == JENKINS_LOOKUP3_HASHFN_ID)
+	{
+		hash = hash_bytes_uint32((uint32) value) % set->maxelements;
+	}
+	else
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("invalid hash function ID: \"%d\"", set->hashfn_id)));
+	}
 
 	bitmap = set->data;
 	values = (int32 *) (set->data + CEIL_DIV(set->maxelements, 8));
@@ -386,13 +448,23 @@ hashset_add_element(hashset_t *set, int32 value)
 static bool
 hashset_contains_element(hashset_t *set, int32 value)
 {
-	int		byte;
-	int		bit;
-	uint32	hash;
+	int     byte;
+	int     bit;
+	uint32  hash;
 	char   *bitmap;
 	int32  *values;
+	int     num_probes = 0; /* Add a counter for the number of probes */
 
-	hash = ((uint32) value * 7691 + 4201) % set->maxelements;
+	if (set->hashfn_id == JENKINS_LOOKUP3_HASHFN_ID)
+	{
+		hash = hash_bytes_uint32((uint32) value) % set->maxelements;
+	}
+	else
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("invalid hash function ID: \"%d\"", set->hashfn_id)));
+	}
 
 	bitmap = set->data;
 	values = (int32 *) (set->data + CEIL_DIV(set->maxelements, 8));
@@ -412,6 +484,12 @@ hashset_contains_element(hashset_t *set, int32 value)
 
 		/* move to the next element */
 		hash = (hash + HASHSET_STEP) % set->maxelements;
+
+		num_probes++; /* Increment the number of probes */
+
+		/* Check if we have probed all slots */
+		if (num_probes >= set->maxelements)
+			return false; /* Avoid infinite loop */
 	}
 }
 
@@ -691,4 +769,249 @@ hashset_agg_combine(PG_FUNCTION_ARGS)
 
 
 	PG_RETURN_POINTER(dst);
+}
+
+
+Datum
+hashset_equals(PG_FUNCTION_ARGS)
+{
+	hashset_t *a = PG_GETARG_HASHSET(0);
+	hashset_t *b = PG_GETARG_HASHSET(1);
+
+	char *bitmap_a;
+	int32 *values_a;
+	int i;
+
+	/*
+	 * Check if the number of elements is the same
+	 */
+	if (a->nelements != b->nelements)
+		PG_RETURN_BOOL(false);
+
+	bitmap_a = a->data;
+	values_a = (int32 *)(a->data + CEIL_DIV(a->maxelements, 8));
+
+	/*
+	 * Check if every element in a is also in b
+	 */
+	for (i = 0; i < a->maxelements; i++)
+	{
+		int byte = (i / 8);
+		int bit = (i % 8);
+
+		if (bitmap_a[byte] & (0x01 << bit))
+		{
+			int32 value = values_a[i];
+
+			if (!hashset_contains_element(b, value))
+				PG_RETURN_BOOL(false);
+		}
+	}
+
+	/*
+	 * All elements in a are in b and the number of elements is the same,
+	 * so the sets must be equal.
+	 */
+	PG_RETURN_BOOL(true);
+}
+
+
+Datum
+hashset_neq(PG_FUNCTION_ARGS)
+{
+    hashset_t *a = PG_GETARG_HASHSET(0);
+    hashset_t *b = PG_GETARG_HASHSET(1);
+
+    /* If a is not equal to b, then they are not equal */
+    if (!DatumGetBool(DirectFunctionCall2(hashset_equals, PointerGetDatum(a), PointerGetDatum(b))))
+        PG_RETURN_BOOL(true);
+
+    PG_RETURN_BOOL(false);
+}
+
+
+Datum hashset_hash(PG_FUNCTION_ARGS)
+{
+    hashset_t *set = PG_GETARG_HASHSET(0);
+
+    /* Initial hash value */
+    uint32 hash = 0;
+
+    /* Access the data array */
+    char *bitmap = set->data;
+    int32 *values = (int32 *)(set->data + CEIL_DIV(set->maxelements, 8));
+
+    /* Iterate through all elements */
+    for (int32 i = 0; i < set->maxelements; i++)
+    {
+        int byte = i / 8;
+        int bit = i % 8;
+
+        /* Check if the current position is occupied */
+        if (bitmap[byte] & (0x01 << bit))
+        {
+            /* Combine the hash value of the current element with the total hash */
+            hash = hash_combine(hash, hash_uint32(values[i]));
+        }
+    }
+
+    /* Return the final hash value */
+    PG_RETURN_INT32(hash);
+}
+
+
+Datum
+hashset_lt(PG_FUNCTION_ARGS)
+{
+	hashset_t *a = PG_GETARG_HASHSET(0);
+	hashset_t *b = PG_GETARG_HASHSET(1);
+
+	char *bitmap_a, *bitmap_b;
+	int32 *values_a, *values_b;
+	int i;
+
+	bitmap_a = a->data;
+	values_a = (int32 *)(a->data + CEIL_DIV(a->maxelements, 8));
+
+	bitmap_b = b->data;
+	values_b = (int32 *)(b->data + CEIL_DIV(b->maxelements, 8));
+
+	/* Compare elements in a lexicographic manner */
+	for (i = 0; i < Min(a->maxelements, b->maxelements); i++)
+	{
+		int byte = (i / 8);
+		int bit = (i % 8);
+
+		bool has_elem_a = bitmap_a[byte] & (0x01 << bit);
+		bool has_elem_b = bitmap_b[byte] & (0x01 << bit);
+
+		if (has_elem_a && has_elem_b)
+		{
+			int32 value_a = values_a[i];
+			int32 value_b = values_b[i];
+
+			if (value_a < value_b)
+				PG_RETURN_BOOL(true);
+			else if (value_a > value_b)
+				PG_RETURN_BOOL(false);
+
+		}
+		else if (has_elem_a)
+			PG_RETURN_BOOL(false);
+		else if (has_elem_b)
+			PG_RETURN_BOOL(true);
+	}
+
+	/*
+	 * If all elements are equal up to the shorter hashset length,
+	 * then the hashset with fewer elements is considered "less than"
+	 */
+	if (a->maxelements < b->maxelements)
+		PG_RETURN_BOOL(true);
+	else
+		PG_RETURN_BOOL(false);
+}
+
+
+Datum
+hashset_le(PG_FUNCTION_ARGS)
+{
+	hashset_t *a = PG_GETARG_HASHSET(0);
+	hashset_t *b = PG_GETARG_HASHSET(1);
+
+	/* If a equals b, or a is less than b, then a is less than or equal to b */
+	if (DatumGetBool(DirectFunctionCall2(hashset_equals, PointerGetDatum(a), PointerGetDatum(b))) ||
+		DatumGetBool(DirectFunctionCall2(hashset_lt, PointerGetDatum(a), PointerGetDatum(b))))
+		PG_RETURN_BOOL(true);
+
+	PG_RETURN_BOOL(false);
+}
+
+
+Datum
+hashset_gt(PG_FUNCTION_ARGS)
+{
+	hashset_t *a = PG_GETARG_HASHSET(0);
+	hashset_t *b = PG_GETARG_HASHSET(1);
+
+	/* If a is not less than or equal to b, then a is greater than b */
+	if (!DatumGetBool(DirectFunctionCall2(hashset_le, PointerGetDatum(a), PointerGetDatum(b))))
+		PG_RETURN_BOOL(true);
+
+	PG_RETURN_BOOL(false);
+}
+
+
+Datum
+hashset_ge(PG_FUNCTION_ARGS)
+{
+	hashset_t *a = PG_GETARG_HASHSET(0);
+	hashset_t *b = PG_GETARG_HASHSET(1);
+
+	/* If a equals b, or a is not less than b, then a is greater than or equal to b */
+	if (DatumGetBool(DirectFunctionCall2(hashset_equals, PointerGetDatum(a), PointerGetDatum(b))) ||
+		!DatumGetBool(DirectFunctionCall2(hashset_lt, PointerGetDatum(a), PointerGetDatum(b))))
+		PG_RETURN_BOOL(true);
+
+	PG_RETURN_BOOL(false);
+}
+
+
+Datum
+hashset_cmp(PG_FUNCTION_ARGS)
+{
+	hashset_t *a = PG_GETARG_HASHSET(0);
+	hashset_t *b = PG_GETARG_HASHSET(1);
+
+	char *bitmap_a, *bitmap_b;
+	int32 *values_a, *values_b;
+	int i;
+
+	bitmap_a = a->data;
+	values_a = (int32 *)(a->data + CEIL_DIV(a->maxelements, 8));
+
+	bitmap_b = b->data;
+	values_b = (int32 *)(b->data + CEIL_DIV(b->maxelements, 8));
+
+	/*
+	 * Iterate through the elements
+	 */
+	for (i = 0; i < Min(a->maxelements, b->maxelements); i++)
+	{
+		int byte = (i / 8);
+		int bit = (i % 8);
+
+		bool a_contains = bitmap_a[byte] & (0x01 << bit);
+		bool b_contains = bitmap_b[byte] & (0x01 << bit);
+
+		if (a_contains && b_contains)
+		{
+			int32 value_a = values_a[i];
+			int32 value_b = values_b[i];
+
+			if (value_a < value_b)
+				PG_RETURN_INT32(-1);
+			else if (value_a > value_b)
+				PG_RETURN_INT32(1);
+		}
+		else if (a_contains)
+		{
+			PG_RETURN_INT32(1);
+		}
+		else if (b_contains)
+		{
+			PG_RETURN_INT32(-1);
+		}
+	}
+
+	/*
+	 * If we got here, the elements in the overlap are equal.
+	 * We need to check the number of elements to determine the order.
+	 */
+	if (a->nelements < b->nelements)
+		PG_RETURN_INT32(-1);
+	else if (a->nelements > b->nelements)
+		PG_RETURN_INT32(1);
+	else
+		PG_RETURN_INT32(0);
 }

@@ -4,3 +4,5 @@ results/
 **/*.so
 regression.diffs
 regression.out
+.vscode
+test/c_tests/test_send_recv
