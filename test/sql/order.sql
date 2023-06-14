@@ -10,7 +10,7 @@ DECLARE
   element INT;
   random_set hashset;
 BEGIN
-  random_set := hashset_init(num_elements);
+  random_set := hashset_with_capacity(num_elements);
 
   FOR i IN 1..num_elements LOOP
     element := floor(random() * 1000)::INT;

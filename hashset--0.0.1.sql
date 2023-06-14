@@ -37,7 +37,12 @@ CREATE TYPE hashset (
  * Hashset Functions
  */
 
-CREATE OR REPLACE FUNCTION hashset_init(int)
+CREATE OR REPLACE FUNCTION hashset()
+    RETURNS hashset
+    AS 'hashset', 'hashset_init'
+    LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION hashset_with_capacity(int)
     RETURNS hashset
     AS 'hashset', 'hashset_init'
     LANGUAGE C IMMUTABLE;
@@ -65,6 +70,11 @@ CREATE OR REPLACE FUNCTION hashset_to_array(hashset)
 CREATE OR REPLACE FUNCTION hashset_count(hashset)
     RETURNS bigint
     AS 'hashset', 'hashset_count'
+    LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION hashset_capacity(hashset)
+    RETURNS bigint
+    AS 'hashset', 'hashset_capacity'
     LANGUAGE C IMMUTABLE;
 
 

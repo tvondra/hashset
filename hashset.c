@@ -55,6 +55,7 @@ PG_FUNCTION_INFO_V1(hashset_contains);
 PG_FUNCTION_INFO_V1(hashset_count);
 PG_FUNCTION_INFO_V1(hashset_merge);
 PG_FUNCTION_INFO_V1(hashset_init);
+PG_FUNCTION_INFO_V1(hashset_capacity);
 PG_FUNCTION_INFO_V1(hashset_agg_add_set);
 PG_FUNCTION_INFO_V1(hashset_agg_add);
 PG_FUNCTION_INFO_V1(hashset_agg_final);
@@ -78,6 +79,7 @@ Datum hashset_contains(PG_FUNCTION_ARGS);
 Datum hashset_count(PG_FUNCTION_ARGS);
 Datum hashset_merge(PG_FUNCTION_ARGS);
 Datum hashset_init(PG_FUNCTION_ARGS);
+Datum hashset_capacity(PG_FUNCTION_ARGS);
 Datum hashset_agg_add(PG_FUNCTION_ARGS);
 Datum hashset_agg_add_set(PG_FUNCTION_ARGS);
 Datum hashset_agg_final(PG_FUNCTION_ARGS);
@@ -566,7 +568,19 @@ hashset_merge(PG_FUNCTION_ARGS)
 Datum
 hashset_init(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_POINTER(hashset_allocate(PG_GETARG_INT32(0)));
+	if (PG_NARGS() == 0) {
+		/*
+		 * No initial capacity argument was passed,
+		 * allocate hashset with zero capacity
+		 */
+		PG_RETURN_POINTER(hashset_allocate(0));
+	} else {
+		/*
+		 * Initial capacity argument was passed,
+		 * allocate hashset with the specified capacity
+		 */
+		PG_RETURN_POINTER(hashset_allocate(PG_GETARG_INT32(0)));
+	}
 }
 
 Datum
@@ -595,6 +609,19 @@ hashset_count(PG_FUNCTION_ARGS)
 	set = PG_GETARG_HASHSET(0);
 
 	PG_RETURN_INT64(set->nelements);
+}
+
+Datum
+hashset_capacity(PG_FUNCTION_ARGS)
+{
+	hashset_t  *set;
+
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+
+	set = (hashset_t *) PG_GETARG_POINTER(0);
+
+	PG_RETURN_INT64(set->maxelements);
 }
 
 Datum

@@ -12,13 +12,15 @@ SELECT '{2147483648}'::hashset; -- out of range
  * Hashset Functions
  */
 
-SELECT hashset_init(0);
-SELECT hashset_add(hashset_init(0), 123);
+SELECT hashset(); -- init empty hashset with no capacity
+SELECT hashset_with_capacity(10); -- init empty hashset with specified capacity
+SELECT hashset_add(hashset(), 123);
 SELECT hashset_contains('{123,456}'::hashset, 456); -- true
 SELECT hashset_contains('{123,456}'::hashset, 789); -- false
 SELECT hashset_merge('{1,2}'::hashset, '{2,3}'::hashset);
 SELECT hashset_to_array('{1,2,3}'::hashset);
-SELECT hashset_count('{1,2,3}'::hashset);
+SELECT hashset_count('{1,2,3}'::hashset); -- 3
+SELECT hashset_capacity(hashset_with_capacity(10)); -- 10
 
 /*
  * Aggregation Functions

@@ -30,13 +30,19 @@ LINE 1: SELECT '{2147483648}'::hashset;
 /*
  * Hashset Functions
  */
-SELECT hashset_init(0);
- hashset_init 
---------------
+SELECT hashset(); -- init empty hashset with zero capacity
+ hashset 
+---------
  {}
 (1 row)
 
-SELECT hashset_add(hashset_init(0), 123);
+SELECT hashset_with_capacity(10); -- init empty hashset with a capacity of 10
+ hashset_with_capacity 
+-----------------------
+ {}
+(1 row)
+
+SELECT hashset_add(hashset(), 123);
  hashset_add 
 -------------
  {123}

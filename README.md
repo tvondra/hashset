@@ -27,12 +27,12 @@ Firstly, let's create the table:
 ```sql
 CREATE TABLE users(
     user_id int PRIMARY KEY,
-    user_likes hashset DEFAULT hashset_init(2)
+    user_likes hashset DEFAULT hashset()
 );
 ```
-In the above statement, the `hashset_init(2)` initializes a hashset with initial
-capacity for 2 elements. The hashset will automatically resize itself when more
-elements are added beyond this initial capacity.
+In the above statement, the `hashset()` initializes an empty hashset
+with zero capacity. The hashset will automatically resize itself when more
+elements are added.
 
 Now, we can perform operations on this table. Here are some examples:
 
@@ -65,13 +65,14 @@ a variable-length type.
 
 ## Functions
 
-- `hashset_init(int) -> hashset`: Initialize an empty hashset.
+- `hashset() -> hashset`: Initialize an empty hashset with no capacity.
+- `hashset_with_capacity(int) -> hashset`: Initialize an empty hashset with given capacity.
 - `hashset_add(hashset, int) -> hashset`: Adds an integer to a hashset.
 - `hashset_contains(hashset, int) -> boolean`: Checks if a hashset contains a given integer.
 - `hashset_merge(hashset, hashset) -> hashset`: Merges two hashsets into a new hashset.
 - `hashset_to_array(hashset) -> int[]`: Converts a hashset to an array of integers.
 - `hashset_count(hashset) -> bigint`: Returns the number of elements in a hashset.
-
+- `hashset_capacity(hashset) -> bigint`: Returns the current capacity of a hashset.
 
 ## Aggregation Functions
 
