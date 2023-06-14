@@ -1,1 +1,1 @@
-SELECT '{1,2s}'::hashset;
+SELECT '{1,2s}'::int4hashset;

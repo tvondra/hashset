@@ -16,21 +16,21 @@ until we reach our first release.
 
 ## Usage
 
-After installing the extension, you can use the `hashset` data type and
+After installing the extension, you can use the `int4hashset` data type and
 associated functions within your PostgreSQL queries.
 
 To demonstrate the usage, let's consider a hypothetical table `users` which has
-a `user_id` and a `user_likes` of type `hashset`.
+a `user_id` and a `user_likes` of type `int4hashset`.
 
 Firstly, let's create the table:
 
 ```sql
 CREATE TABLE users(
     user_id int PRIMARY KEY,
-    user_likes hashset DEFAULT hashset()
+    user_likes int4hashset DEFAULT int4hashset()
 );
 ```
-In the above statement, the `hashset()` initializes an empty hashset
+In the above statement, the `int4hashset()` initializes an empty hashset
 with zero capacity. The hashset will automatically resize itself when more
 elements are added.
 
@@ -53,31 +53,30 @@ SELECT hashset_count(user_likes) FROM users WHERE user_id = 1; -- 2
 ```
 
 You can also use the aggregate functions to perform operations on multiple rows.
-For instance, you can add an integer to a `hashset`.
 
 
 ## Data types
 
-- **hashset**: This data type represents a set of integers. Internally, it uses
+- **int4hashset**: This data type represents a set of integers. Internally, it uses
 a combination of a bitmap and a value array to store the elements in a set. It's
 a variable-length type.
 
 
 ## Functions
 
-- `hashset() -> hashset`: Initialize an empty hashset with no capacity.
-- `hashset_with_capacity(int) -> hashset`: Initialize an empty hashset with given capacity.
-- `hashset_add(hashset, int) -> hashset`: Adds an integer to a hashset.
-- `hashset_contains(hashset, int) -> boolean`: Checks if a hashset contains a given integer.
-- `hashset_merge(hashset, hashset) -> hashset`: Merges two hashsets into a new hashset.
-- `hashset_to_array(hashset) -> int[]`: Converts a hashset to an array of integers.
-- `hashset_count(hashset) -> bigint`: Returns the number of elements in a hashset.
-- `hashset_capacity(hashset) -> bigint`: Returns the current capacity of a hashset.
+- `int4hashset() -> int4hashset`: Initialize an empty int4hashset with no capacity.
+- `int4hashset_with_capacity(int) -> int4hashset`: Initialize an empty int4hashset with given capacity.
+- `hashset_add(int4hashset, int) -> int4hashset`: Adds an integer to an int4hashset.
+- `hashset_contains(int4hashset, int) -> boolean`: Checks if an int4hashset contains a given integer.
+- `hashset_merge(int4hashset, int4hashset) -> int4hashset`: Merges two int4hashsets into a new int4hashset.
+- `hashset_to_array(int4hashset) -> int[]`: Converts an int4hashset to an array of integers.
+- `hashset_count(int4hashset) -> bigint`: Returns the number of elements in an int4hashset.
+- `hashset_capacity(int4hashset) -> bigint`: Returns the current capacity of an int4hashset.
 
 ## Aggregation Functions
 
-- `hashset(int) -> hashset`: Aggregate integers into a hashset.
-- `hashset(hashset) -> hashset`: Aggregate hashsets into a hashset.
+- `hashset(int) -> int4hashset`: Aggregate integers into a hashset.
+- `hashset(int4hashset) -> int4hashset`: Aggregate hashsets into a hashset.
 
 
 ## Operators
@@ -88,7 +87,7 @@ a variable-length type.
 
 ## Hashset Hash Operators
 
-- `hashset_hash(hashset) -> integer`: Returns the hash value of a hashset.
+- `hashset_hash(int4hashset) -> integer`: Returns the hash value of an int4hashset.
 
 
 ## Hashset Btree Operators
@@ -98,7 +97,7 @@ a variable-length type.
 
 ## Limitations
 
-- The `hashset` data type currently supports integers within the range of int4
+- The `int4hashset` data type currently supports integers within the range of int4
 (-2147483648 to 2147483647).
 
 

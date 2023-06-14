@@ -1,4 +1,4 @@
-SELECT '{1,2s}'::hashset;
+SELECT '{1,2s}'::int4hashset;
 ERROR:  unexpected character "s" in hashset input
-LINE 1: SELECT '{1,2s}'::hashset;
+LINE 1: SELECT '{1,2s}'::int4hashset;
                ^

@@ -1,6 +1,6 @@
 CREATE EXTENSION hashset;
 
-CREATE OR REPLACE FUNCTION hashset_sorted(hashset)
+CREATE OR REPLACE FUNCTION hashset_sorted(int4hashset)
 RETURNS TEXT AS
 $$
 SELECT array_agg(i ORDER BY i::int)::text
