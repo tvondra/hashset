@@ -3,10 +3,16 @@
 This PostgreSQL extension implements hashset, a data structure (type)
 providing a collection of integer items with fast lookup.
 
+
+## Version
+
+0.0.1
+
 🚧 **NOTICE** 🚧 This repository is currently under active development and the hashset
 PostgreSQL extension is **not production-ready**. As the codebase is evolving
 with possible breaking changes, we are not providing any migration scripts
 until we reach our first release.
+
 
 ## Usage
 
@@ -59,35 +65,40 @@ a variable-length type.
 
 ## Functions
 
-The extension provides the following functions:
+- `hashset_init(int) -> hashset`: Initialize an empty hashset.
+- `hashset_add(hashset, int) -> hashset`: Adds an integer to a hashset.
+- `hashset_contains(hashset, int) -> boolean`: Checks if a hashset contains a given integer.
+- `hashset_merge(hashset, hashset) -> hashset`: Merges two hashsets into a new hashset.
+- `hashset_to_array(hashset) -> int[]`: Converts a hashset to an array of integers.
+- `hashset_count(hashset) -> bigint`: Returns the number of elements in a hashset.
 
-### hashset_add(hashset, int) -> hashset
-Adds an integer to a `hashset`.
 
-### hashset_contains(hashset, int) -> boolean
-Checks if an integer is contained in a `hashset`.
+## Aggregation Functions
 
-### hashset_count(hashset) -> bigint
-Returns the number of elements in a `hashset`.
+- `hashset(int) -> hashset`: Aggregate integers into a hashset.
+- `hashset(hashset) -> hashset`: Aggregate hashsets into a hashset.
 
-### hashset_merge(hashset, hashset) -> hashset
-Merges two `hashset`s into a single `hashset`.
 
-### hashset_to_array(hashset) -> integer[]
-Converts a `hashset` to an integer array.
+## Operators
 
-### hashset_init(int) -> hashset
-Initializes an empty `hashset` with a specified initial capacity for maximum
-elements. The argument determines the maximum number of elements the `hashset`
-can hold before it needs to resize.
+- Equality (`=`): Checks if two hashsets are equal.
+- Inequality (`<>`): Checks if two hashsets are not equal.
 
-## Aggregate Functions
 
-### hashset(integer) -> hashset
-Generates a `hashset` from a series of integers, keeping only the unique ones.
+## Hashset Hash Operators
 
-### hashset(hashset) -> hashset
-Merges multiple `hashset`s into a single `hashset`, preserving unique elements.
+- `hashset_hash(hashset) -> integer`: Returns the hash value of a hashset.
+
+
+## Hashset Btree Operators
+
+- `<`, `<=`, `>`, `>=`: Comparison operators for hashsets.
+
+
+## Limitations
+
+- The `hashset` data type currently supports integers within the range of int4
+(-2147483648 to 2147483647).
 
 
 ## Installation
