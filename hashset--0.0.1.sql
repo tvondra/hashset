@@ -1,3 +1,7 @@
+/*
+ * Hashset Type Definition
+ */
+
 CREATE TYPE hashset;
 
 CREATE OR REPLACE FUNCTION hashset_in(cstring)
@@ -29,6 +33,9 @@ CREATE TYPE hashset (
     STORAGE = external
 );
 
+/*
+ * Hashset Functions
+ */
 
 CREATE OR REPLACE FUNCTION hashset_add(hashset, int)
     RETURNS hashset
@@ -60,6 +67,9 @@ CREATE OR REPLACE FUNCTION hashset_init(int)
     AS 'hashset', 'hashset_init'
     LANGUAGE C IMMUTABLE;
 
+/*
+ * Aggregation Functions
+ */
 
 CREATE OR REPLACE FUNCTION hashset_agg_add(p_pointer internal, p_value int)
     RETURNS internal
@@ -84,7 +94,6 @@ CREATE AGGREGATE hashset(int) (
     PARALLEL = SAFE
 );
 
-
 CREATE OR REPLACE FUNCTION hashset_agg_add_set(p_pointer internal, p_value hashset)
     RETURNS internal
     AS 'hashset', 'hashset_agg_add_set'
@@ -94,7 +103,7 @@ CREATE OR REPLACE FUNCTION hashset_agg_final(p_pointer internal)
     RETURNS hashset
     AS 'hashset', 'hashset_agg_final'
     LANGUAGE C IMMUTABLE;
-    
+
 CREATE OR REPLACE FUNCTION hashset_agg_combine(p_pointer internal, p_pointer2 internal)
     RETURNS internal
     AS 'hashset', 'hashset_agg_combine'
@@ -108,6 +117,9 @@ CREATE AGGREGATE hashset(hashset) (
     PARALLEL = SAFE
 );
 
+/*
+ * Operator Definitions
+ */
 
 CREATE OR REPLACE FUNCTION hashset_equals(hashset, hashset)
     RETURNS bool
@@ -138,6 +150,9 @@ CREATE OPERATOR <> (
     HASHES
 );
 
+/*
+ * Hashset Hash Operators
+ */
 
 CREATE OR REPLACE FUNCTION hashset_hash(hashset)
     RETURNS integer
@@ -148,6 +163,10 @@ CREATE OPERATOR CLASS hashset_hash_ops
     DEFAULT FOR TYPE hashset USING hash AS
     OPERATOR 1 = (hashset, hashset),
     FUNCTION 1 hashset_hash(hashset);
+
+/*
+ * Hashset Btree Operators
+ */
 
 CREATE OR REPLACE FUNCTION hashset_lt(hashset, hashset)
     RETURNS bool

@@ -1,96 +1,311 @@
-SELECT hashset_sorted('{1}'::hashset);
- hashset_sorted 
-----------------
- {1}
+/*
+ * Hashset Type
+ */
+SELECT '{}'::hashset; -- empty hashset
+ hashset 
+---------
+ {}
 (1 row)
 
-SELECT hashset_sorted('{1,2}'::hashset);
- hashset_sorted 
-----------------
- {1,2}
+SELECT '{1,2,3}'::hashset;
+ hashset 
+---------
+ {3,2,1}
 (1 row)
 
-SELECT hashset_sorted('{1,2,3}'::hashset);
- hashset_sorted 
-----------------
- {1,2,3}
+SELECT '{-2147483648,0,2147483647}'::hashset;
+          hashset           
+----------------------------
+ {0,2147483647,-2147483648}
 (1 row)
 
-SELECT hashset_sorted('{1,2,3,4}'::hashset);
- hashset_sorted 
-----------------
- {1,2,3,4}
+SELECT '{-2147483649}'::hashset; -- out of range
+ERROR:  value "-2147483649}" is out of range for type integer
+LINE 1: SELECT '{-2147483649}'::hashset;
+               ^
+SELECT '{2147483648}'::hashset; -- out of range
+ERROR:  value "2147483648}" is out of range for type integer
+LINE 1: SELECT '{2147483648}'::hashset;
+               ^
+/*
+ * Hashset Functions
+ */
+SELECT hashset_init(0);
+ hashset_init 
+--------------
+ {}
 (1 row)
 
-SELECT hashset_sorted('{1,2,3,4,5}'::hashset);
- hashset_sorted 
-----------------
- {1,2,3,4,5}
+SELECT hashset_add(hashset_init(0), 123);
+ hashset_add 
+-------------
+ {123}
 (1 row)
 
-SELECT hashset_sorted('{1,2,3,4,5,6}'::hashset);
- hashset_sorted 
-----------------
- {1,2,3,4,5,6}
+SELECT hashset_contains('{123,456}'::hashset, 456); -- true
+ hashset_contains 
+------------------
+ t
 (1 row)
 
-SELECT hashset_sorted('{1,2,3,4,5,6,7}'::hashset);
- hashset_sorted  
------------------
- {1,2,3,4,5,6,7}
+SELECT hashset_contains('{123,456}'::hashset, 789); -- false
+ hashset_contains 
+------------------
+ f
 (1 row)
 
-SELECT hashset_sorted('{1,2,3,4,5,6,7,8}'::hashset);
-  hashset_sorted   
--------------------
- {1,2,3,4,5,6,7,8}
+SELECT hashset_merge('{1,2}'::hashset, '{2,3}'::hashset);
+ hashset_merge 
+---------------
+ {3,1,2}
 (1 row)
 
-SELECT hashset_sorted('{1,2,3,4,5,6,7,8,9}'::hashset);
-   hashset_sorted    
----------------------
- {1,2,3,4,5,6,7,8,9}
+SELECT hashset_to_array('{1,2,3}'::hashset);
+ hashset_to_array 
+------------------
+ {3,2,1}
 (1 row)
 
-SELECT hashset_sorted('{1,2,3,4,5,6,7,8,9,10}'::hashset);
-     hashset_sorted     
+SELECT hashset_count('{1,2,3}'::hashset);
+ hashset_count 
+---------------
+             3
+(1 row)
+
+/*
+ * Aggregation Functions
+ */
+SELECT hashset(i) FROM generate_series(1,10) AS i;
+        hashset         
 ------------------------
- {1,2,3,4,5,6,7,8,9,10}
+ {8,1,10,3,9,4,6,2,5,7}
 (1 row)
 
-SELECT hashset_sorted('{1,2,3,4,5,6,7,8,9,10,11}'::hashset);
-      hashset_sorted       
----------------------------
- {1,2,3,4,5,6,7,8,9,10,11}
+SELECT hashset(h) FROM
+(
+    SELECT hashset(i) AS h FROM generate_series(1,5) AS i
+    UNION ALL
+    SELECT hashset(j) AS h FROM generate_series(6,10) AS j
+) q;
+        hashset         
+------------------------
+ {8,1,10,3,9,4,6,2,5,7}
 (1 row)
 
-SELECT hashset_sorted('{1,2,3,4,5,6,7,8,9,10,11,12}'::hashset);
-        hashset_sorted        
-------------------------------
- {1,2,3,4,5,6,7,8,9,10,11,12}
+/*
+ * Operator Definitions
+ */
+SELECT '{2}'::hashset = '{1}'::hashset; -- false
+ ?column? 
+----------
+ f
 (1 row)
 
-SELECT hashset_sorted('{1,2,3,4,5,6,7,8,9,10,11,12,13}'::hashset);
-         hashset_sorted          
----------------------------------
- {1,2,3,4,5,6,7,8,9,10,11,12,13}
+SELECT '{2}'::hashset = '{2}'::hashset; -- true
+ ?column? 
+----------
+ t
 (1 row)
 
-SELECT hashset_sorted('{1,2,3,4,5,6,7,8,9,10,11,12,13,14}'::hashset);
-           hashset_sorted           
-------------------------------------
- {1,2,3,4,5,6,7,8,9,10,11,12,13,14}
+SELECT '{2}'::hashset = '{3}'::hashset; -- false
+ ?column? 
+----------
+ f
 (1 row)
 
-SELECT hashset_sorted('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}'::hashset);
-            hashset_sorted             
----------------------------------------
- {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+SELECT '{1,2,3}'::hashset = '{1,2,3}'::hashset; -- true
+ ?column? 
+----------
+ t
 (1 row)
 
-SELECT hashset_sorted('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16}'::hashset);
-              hashset_sorted              
-------------------------------------------
- {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16}
+SELECT '{1,2,3}'::hashset = '{2,3,1}'::hashset; -- true
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{1,2,3}'::hashset = '{4,5,6}'::hashset; -- false
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{1,2,3}'::hashset = '{1,2}'::hashset; -- false
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{1,2,3}'::hashset = '{1,2,3,4}'::hashset; -- false
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{2}'::hashset <> '{1}'::hashset; -- true
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{2}'::hashset <> '{2}'::hashset; -- false
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{2}'::hashset <> '{3}'::hashset; -- true
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{1,2,3}'::hashset <> '{1,2,3}'::hashset; -- false
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{1,2,3}'::hashset <> '{2,3,1}'::hashset; -- false
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{1,2,3}'::hashset <> '{4,5,6}'::hashset; -- true
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{1,2,3}'::hashset <> '{1,2}'::hashset; -- true
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{1,2,3}'::hashset <> '{1,2,3,4}'::hashset; -- true
+ ?column? 
+----------
+ t
+(1 row)
+
+/*
+ * Hashset Hash Operators
+ */
+SELECT hashset_hash('{1,2,3}'::hashset);
+ hashset_hash 
+--------------
+  -1778803072
+(1 row)
+
+SELECT hashset_hash('{3,2,1}'::hashset);
+ hashset_hash 
+--------------
+  -1778803072
+(1 row)
+
+SELECT COUNT(*), COUNT(DISTINCT h)
+FROM
+(
+    SELECT '{1,2,3}'::hashset AS h
+    UNION ALL
+    SELECT '{3,2,1}'::hashset AS h
+) q;
+ count | count 
+-------+-------
+     2 |     1
+(1 row)
+
+/*
+ * Hashset Btree Operators
+ */
+SELECT h FROM
+(
+    SELECT '{2}'::hashset AS h
+    UNION ALL
+    SELECT '{1}'::hashset AS h
+    UNION ALL
+    SELECT '{3}'::hashset AS h
+) q
+ORDER BY h;
+  h  
+-----
+ {1}
+ {2}
+ {3}
+(3 rows)
+
+SELECT '{2}'::hashset < '{1}'::hashset; -- false
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{2}'::hashset < '{2}'::hashset; -- false
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{2}'::hashset < '{3}'::hashset; -- true
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{2}'::hashset <= '{1}'::hashset; -- false
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{2}'::hashset <= '{2}'::hashset; -- true
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{2}'::hashset <= '{3}'::hashset; -- true
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{2}'::hashset > '{1}'::hashset; -- true
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{2}'::hashset > '{2}'::hashset; -- false
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{2}'::hashset > '{3}'::hashset; -- false
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{2}'::hashset >= '{1}'::hashset; -- true
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{2}'::hashset >= '{2}'::hashset; -- true
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{2}'::hashset >= '{3}'::hashset; -- false
+ ?column? 
+----------
+ f
 (1 row)
 

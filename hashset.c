@@ -149,7 +149,13 @@ hashset_in(PG_FUNCTION_ARGS)
 	/* Initial size based on input length (arbitrary, could be optimized) */
 	set = hashset_allocate(len/2);
 
-	while (true)
+	/* Check for empty set */
+	if (*str == '}')
+	{
+		PG_RETURN_POINTER(set);
+	}
+
+	while (*str != '}')
 	{
 		int64 value = strtol(str, &endptr, 10);
 
@@ -179,16 +185,16 @@ hashset_in(PG_FUNCTION_ARGS)
 		{
 			str = endptr + 1;  /* Move to the next number */
 		}
-		else if (*endptr == '}')
-		{
-			break;  /* End of the hashset */
-		}
-		else
+		else if (*endptr != '}')
 		{
 			/* Unexpected character */
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 					errmsg("unexpected character \"%c\" in hashset input", *endptr)));
+		}
+		else  /* *endptr is '}', move to next iteration */
+		{
+			str = endptr;
 		}
 	}
 
