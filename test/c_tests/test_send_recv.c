@@ -9,8 +9,16 @@ void exit_nicely(PGconn *conn) {
 
 int main() {
 	/* Connect to database specified by the PGDATABASE environment variable */
-	const char	*conninfo = "host=localhost port=5432";
-	PGconn		*conn = PQconnectdb(conninfo);
+	const char *hostname = getenv("PGHOST");
+	char		conninfo[1024];
+	PGconn	   *conn;
+
+	if (hostname == NULL)
+		hostname = "localhost";
+
+	/* Connect to database specified by the PGDATABASE environment variable */
+	snprintf(conninfo, sizeof(conninfo), "host=%s port=5432", hostname);
+	conn = PQconnectdb(conninfo);
 	if (PQstatus(conn) != CONNECTION_OK) {
 		fprintf(stderr, "Connection to database failed: %s", PQerrorMessage(conn));
 		exit_nicely(conn);
@@ -20,13 +28,13 @@ int main() {
 	PQexec(conn, "CREATE EXTENSION IF NOT EXISTS hashset");
 
 	/* Create temporary table */
-	PQexec(conn, "CREATE TABLE IF NOT EXISTS test_hashset_send_recv (hashset_col hashset)");
+	PQexec(conn, "CREATE TABLE IF NOT EXISTS test_hashset_send_recv (hashset_col int4hashset)");
 
 	/* Enable binary output */
 	PQexec(conn, "SET bytea_output = 'escape'");
 
 	/* Insert dummy data */
-	const char *insert_command = "INSERT INTO test_hashset_send_recv (hashset_col) VALUES ('{1,2,3}'::hashset)";
+	const char *insert_command = "INSERT INTO test_hashset_send_recv (hashset_col) VALUES ('{1,2,3}'::int4hashset)";
 	PGresult *res = PQexec(conn, insert_command);
 	if (PQresultStatus(res) != PGRES_COMMAND_OK) {
 		fprintf(stderr, "INSERT failed: %s", PQerrorMessage(conn));
@@ -64,7 +72,7 @@ int main() {
 	PQclear(res);
 
 	/* Check the data */
-	const char *check_command = "SELECT COUNT(DISTINCT hashset_col::text) AS unique_count, COUNT(*) FROM test_hashset_send_recv";
+	const char *check_command = "SELECT COUNT(DISTINCT hashset_col) AS unique_count, COUNT(*) FROM test_hashset_send_recv";
 	res = PQexec(conn, check_command);
 	if (PQresultStatus(res) != PGRES_TUPLES_OK) {
 		fprintf(stderr, "SELECT failed: %s", PQerrorMessage(conn));
