@@ -103,11 +103,34 @@ a variable-length type.
 
 ## Installation
 
-To install the extension, run `make install` in the project root. Then, in your
-PostgreSQL connection, execute `CREATE EXTENSION hashset;`.
+To install the extension on any platform, follow these general steps:
+
+1. Ensure you have PostgreSQL installed on your system, including the development files.
+2. Clone the repository.
+3. Navigate to the cloned repository directory.
+4. Compile the extension using `make`.
+5. Install the extension using `sudo make install`.
+6. Run the tests using `make installcheck` (optional).
+
+In your PostgreSQL connection, enable the hashset extension using the following SQL command:
+```sql
+CREATE EXTENSION hashset;
+```
 
 This extension requires PostgreSQL version ?.? or later.
 
+For Ubuntu 22.04.1 LTS, you would run the following commands:
+
+```sh
+sudo apt install postgresql-15 postgresql-server-dev-15 postgresql-client-15
+git clone https://github.com/tvondra/hashset.git
+cd hashset
+make
+sudo make install
+make installcheck
+```
+
+Please note that this project is currently under active development and is not yet considered production-ready.
 
 ## License
 
