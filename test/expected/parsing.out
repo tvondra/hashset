@@ -1,0 +1,71 @@
+/* Valid */
+SELECT '{1,23,-456}'::int4hashset;
+ int4hashset 
+-------------
+ {1,-456,23}
+(1 row)
+
+SELECT ' { 1 , 23 , -456 } '::int4hashset;
+ int4hashset 
+-------------
+ {1,-456,23}
+(1 row)
+
+/* Only whitespace is allowed after the closing brace */
+SELECT ' { 1 , 23 , -456 } 1'::int4hashset; -- error
+ERROR:  malformed hashset literal: "1"
+LINE 2: SELECT ' { 1 , 23 , -456 } 1'::int4hashset;
+               ^
+DETAIL:  Junk after closing right brace.
+SELECT ' { 1 , 23 , -456 } ,'::int4hashset; -- error
+ERROR:  malformed hashset literal: ","
+LINE 1: SELECT ' { 1 , 23 , -456 } ,'::int4hashset;
+               ^
+DETAIL:  Junk after closing right brace.
+SELECT ' { 1 , 23 , -456 } {'::int4hashset; -- error
+ERROR:  malformed hashset literal: "{"
+LINE 1: SELECT ' { 1 , 23 , -456 } {'::int4hashset;
+               ^
+DETAIL:  Junk after closing right brace.
+SELECT ' { 1 , 23 , -456 } }'::int4hashset; -- error
+ERROR:  malformed hashset literal: "}"
+LINE 1: SELECT ' { 1 , 23 , -456 } }'::int4hashset;
+               ^
+DETAIL:  Junk after closing right brace.
+SELECT ' { 1 , 23 , -456 } x'::int4hashset; -- error
+ERROR:  malformed hashset literal: "x"
+LINE 1: SELECT ' { 1 , 23 , -456 } x'::int4hashset;
+               ^
+DETAIL:  Junk after closing right brace.
+/* Unexpected character when expecting closing brace */
+SELECT ' { 1 , 23 , -456 1'::int4hashset; -- error
+ERROR:  unexpected character "1" in hashset input
+LINE 2: SELECT ' { 1 , 23 , -456 1'::int4hashset;
+               ^
+SELECT ' { 1 , 23 , -456 {'::int4hashset; -- error
+ERROR:  unexpected character "{" in hashset input
+LINE 1: SELECT ' { 1 , 23 , -456 {'::int4hashset;
+               ^
+SELECT ' { 1 , 23 , -456 x'::int4hashset; -- error
+ERROR:  unexpected character "x" in hashset input
+LINE 1: SELECT ' { 1 , 23 , -456 x'::int4hashset;
+               ^
+/* Error handling for strtol */
+SELECT ' { , 23 , -456 } '::int4hashset; -- error
+ERROR:  invalid input syntax for integer: ", 23 , -456 } "
+LINE 2: SELECT ' { , 23 , -456 } '::int4hashset;
+               ^
+SELECT ' { 1 , 23 , '::int4hashset; -- error
+ERROR:  invalid input syntax for integer: ""
+LINE 1: SELECT ' { 1 , 23 , '::int4hashset;
+               ^
+SELECT ' { s , 23 , -456 } '::int4hashset; -- error
+ERROR:  invalid input syntax for integer: "s , 23 , -456 } "
+LINE 1: SELECT ' { s , 23 , -456 } '::int4hashset;
+               ^
+/* Missing opening brace */
+SELECT ' 1 , 23 , -456 } '::int4hashset; -- error
+ERROR:  invalid input syntax for hashset: "1 , 23 , -456 } "
+LINE 2: SELECT ' 1 , 23 , -456 } '::int4hashset;
+               ^
+DETAIL:  Hashset representation must start with "{".

@@ -4,13 +4,6 @@
  * Copyright (C) Tomas Vondra, 2019
  */
 
-#include <stdio.h>
-#include <math.h>
-#include <string.h>
-#include <sys/time.h>
-#include <unistd.h>
-#include <limits.h>
-
 #include "postgres.h"
 #include "libpq/pqformat.h"
 #include "nodes/memnodes.h"
@@ -20,6 +13,13 @@
 #include "utils/memutils.h"
 #include "catalog/pg_type.h"
 #include "common/hashfn.h"
+
+#include <stdio.h>
+#include <math.h>
+#include <string.h>
+#include <sys/time.h>
+#include <unistd.h>
+#include <limits.h>
 
 PG_MODULE_MAGIC;
 
@@ -94,6 +94,28 @@ Datum int4hashset_gt(PG_FUNCTION_ARGS);
 Datum int4hashset_ge(PG_FUNCTION_ARGS);
 Datum int4hashset_cmp(PG_FUNCTION_ARGS);
 
+/*
+ * hashset_isspace() --- a non-locale-dependent isspace()
+ *
+ * Identical to array_isspace() in src/backend/utils/adt/arrayfuncs.c.
+ * We used to use isspace() for parsing hashset values, but that has
+ * undesirable results: a hashset value might be silently interpreted
+ * differently depending on the locale setting. So here, we hard-wire
+ * the traditional ASCII definition of isspace().
+ */
+static bool
+hashset_isspace(char ch)
+{
+	if (ch == ' ' ||
+		ch == '\t' ||
+		ch == '\n' ||
+		ch == '\r' ||
+		ch == '\v' ||
+		ch == '\f')
+		return true;
+	return false;
+}
+
 static int4hashset_t *
 int4hashset_allocate(int maxelements)
 {
@@ -135,14 +157,18 @@ int4hashset_in(PG_FUNCTION_ARGS)
 	char *endptr;
 	int32 len = strlen(str);
 	int4hashset_t *set;
+	int64 value;
 
-	/* Check the opening and closing braces */
-	if (str[0] != '{' || str[len - 1] != '}')
+	/* Skip initial spaces */
+	while (hashset_isspace(*str)) str++;
+
+	/* Check the opening brace */
+	if (*str != '{')
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 				errmsg("invalid input syntax for hashset: \"%s\"", str),
-				errdetail("Hashset representation must start with \"{\" and end with \"}\".")));
+				errdetail("Hashset representation must start with \"{\".")));
 	}
 
 	/* Start parsing from the first number (after the opening brace) */
@@ -151,22 +177,27 @@ int4hashset_in(PG_FUNCTION_ARGS)
 	/* Initial size based on input length (arbitrary, could be optimized) */
 	set = int4hashset_allocate(len/2);
 
-	/* Check for empty set */
-	if (*str == '}')
+	while (true)
 	{
-		PG_RETURN_POINTER(set);
-	}
+		/* Skip spaces before number */
+		while (hashset_isspace(*str)) str++;
 
-	while (*str != '}')
-	{
-		int64 value = strtol(str, &endptr, 10);
+		/* Check for closing brace, handling the case for an empty set */
+		if (*str == '}')
+		{
+			str++; /* Move past the closing brace */
+			break;
+		}
+
+		/* Parse the number */
+		value = strtol(str, &endptr, 10);
 
 		if (errno == ERANGE || value < PG_INT32_MIN || value > PG_INT32_MAX)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 					errmsg("value \"%s\" is out of range for type %s", str,
-					"integer")));
+							"integer")));
 		}
 
 		/* Add the value to the hashset, resize if needed */
@@ -183,21 +214,36 @@ int4hashset_in(PG_FUNCTION_ARGS)
 					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 					errmsg("invalid input syntax for integer: \"%s\"", str)));
 		}
-		else if (*endptr == ',')
+
+		str = endptr; /* Move to next potential number or closing brace */
+
+        /* Skip spaces before the next number or closing brace */
+		while (hashset_isspace(*str)) str++;
+
+		if (*str == ',')
 		{
-			str = endptr + 1;  /* Move to the next number */
+			str++; /* Skip comma before next loop iteration */
 		}
-		else if (*endptr != '}')
+		else if (*str != '}')
 		{
 			/* Unexpected character */
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-					errmsg("unexpected character \"%c\" in hashset input", *endptr)));
+					errmsg("unexpected character \"%c\" in hashset input", *str)));
 		}
-		else  /* *endptr is '}', move to next iteration */
+	}
+
+	/* Only whitespace is allowed after the closing brace */
+	while (*str)
+	{
+		if (!hashset_isspace(*str))
 		{
-			str = endptr;
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+					errmsg("malformed hashset literal: \"%s\"", str),
+					errdetail("Junk after closing right brace.")));
 		}
+		str++;
 	}
 
 	PG_RETURN_POINTER(set);
@@ -257,10 +303,10 @@ int4hashset_send(PG_FUNCTION_ARGS)
 	pq_begintypsend(&buf);
 
 	/* Send the non-data fields */
-	pq_sendint(&buf, set->flags, 4);
-	pq_sendint(&buf, set->maxelements, 4);
-	pq_sendint(&buf, set->nelements, 4);
-	pq_sendint(&buf, set->hashfn_id, 4);
+	pq_sendint32(&buf, set->flags);
+	pq_sendint32(&buf, set->maxelements);
+	pq_sendint32(&buf, set->nelements);
+	pq_sendint32(&buf, set->hashfn_id);
 
 	/* Compute and send the size of the data field */
 	data_size = VARSIZE(set) - offsetof(int4hashset_t, data);
