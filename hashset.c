@@ -42,6 +42,7 @@ static bool int4hashset_contains_element(int4hashset_t *set, int32 value);
 static Datum int32_to_array(FunctionCallInfo fcinfo, int32 * d, int len);
 
 #define PG_GETARG_INT4HASHSET(x)	(int4hashset_t *) PG_DETOAST_DATUM(PG_GETARG_DATUM(x))
+#define PG_GETARG_INT4HASHSET_COPY(x) (int4hashset_t *) PG_DETOAST_DATUM_COPY(PG_GETARG_DATUM(x))
 #define CEIL_DIV(a, b) (((a) + (b) - 1) / (b))
 #define HASHSET_STEP 13
 #define JENKINS_LOOKUP3_HASHFN_ID 1
@@ -566,7 +567,7 @@ int4hashset_add(PG_FUNCTION_ARGS)
 	else
 	{
 		/* make sure we are working with a non-toasted and non-shared copy of the input */
-		set = (int4hashset_t *) PG_GETARG_INT4HASHSET(0);
+		set = PG_GETARG_INT4HASHSET_COPY(0);
 	}
 
 	set = int4hashset_add_element(set, PG_GETARG_INT32(1));
@@ -592,7 +593,7 @@ int4hashset_merge(PG_FUNCTION_ARGS)
 	else if (PG_ARGISNULL(0))
 		PG_RETURN_POINTER(PG_GETARG_INT4HASHSET(1));
 
-	seta = PG_GETARG_INT4HASHSET(0);
+	seta = PG_GETARG_INT4HASHSET_COPY(0);
 	setb = PG_GETARG_INT4HASHSET(1);
 
 	bitmap = setb->data;
