@@ -64,19 +64,28 @@ a variable-length type.
 
 ## Functions
 
-- `int4hashset() -> int4hashset`: Initialize an empty int4hashset with no capacity.
-- `int4hashset_with_capacity(int) -> int4hashset`: Initialize an empty int4hashset with given capacity.
+- `int4hashset([capacity int, load_factor float4, growth_factor float4, hashfn_id int4]) -> int4hashset`:
+  Initialize an empty int4hashset with optional parameters.
+    - `capacity` specifies the initial capacity, which is zero by default.
+    - `load_factor` represents the threshold for resizing the hashset and defaults to 0.75.
+    - `growth_factor` is the multiplier for resizing and defaults to 2.0.
+    - `hashfn_id` represents the hash function used.
+        - 1=Jenkins/lookup3 (default)
+        - 2=MurmurHash32
+        - 3=Naive hash function
 - `hashset_add(int4hashset, int) -> int4hashset`: Adds an integer to an int4hashset.
 - `hashset_contains(int4hashset, int) -> boolean`: Checks if an int4hashset contains a given integer.
 - `hashset_merge(int4hashset, int4hashset) -> int4hashset`: Merges two int4hashsets into a new int4hashset.
 - `hashset_to_array(int4hashset) -> int[]`: Converts an int4hashset to an array of integers.
 - `hashset_count(int4hashset) -> bigint`: Returns the number of elements in an int4hashset.
 - `hashset_capacity(int4hashset) -> bigint`: Returns the current capacity of an int4hashset.
+- `hashset_load_factor(int4hashset) -> float4`: Returns the load factor of an int4hashset.
+- `hashset_growth_factor(int4hashset) -> float4`: Returns the growth factor of an int4hashset.
 
 ## Aggregation Functions
 
-- `hashset(int) -> int4hashset`: Aggregate integers into a hashset.
-- `hashset(int4hashset) -> int4hashset`: Aggregate hashsets into a hashset.
+- `hashset_agg(int) -> int4hashset`: Aggregate integers into a hashset.
+- `hashset_agg(int4hashset) -> int4hashset`: Aggregate hashsets into a hashset.
 
 
 ## Operators

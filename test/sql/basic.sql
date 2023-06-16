@@ -12,8 +12,13 @@ SELECT '{2147483648}'::int4hashset; -- out of range
  * Hashset Functions
  */
 
-SELECT int4hashset(); -- init empty int4hashset with no capacity
-SELECT int4hashset_with_capacity(10); -- init empty int4hashset with specified capacity
+SELECT int4hashset();
+SELECT int4hashset(
+    capacity := 10,
+    load_factor := 0.9,
+    growth_factor := 1.1,
+    hashfn_id := 1
+);
 SELECT hashset_add(int4hashset(), 123);
 SELECT hashset_add(NULL::int4hashset, 123);
 SELECT hashset_add('{123}'::int4hashset, 456);
@@ -22,19 +27,19 @@ SELECT hashset_contains('{123,456}'::int4hashset, 789); -- false
 SELECT hashset_merge('{1,2}'::int4hashset, '{2,3}'::int4hashset);
 SELECT hashset_to_array('{1,2,3}'::int4hashset);
 SELECT hashset_count('{1,2,3}'::int4hashset); -- 3
-SELECT hashset_capacity(int4hashset_with_capacity(10)); -- 10
+SELECT hashset_capacity(int4hashset(capacity := 10)); -- 10
 
 /*
  * Aggregation Functions
  */
 
-SELECT hashset(i) FROM generate_series(1,10) AS i;
+SELECT hashset_agg(i) FROM generate_series(1,10) AS i;
 
-SELECT hashset(h) FROM
+SELECT hashset_agg(h) FROM
 (
-    SELECT hashset(i) AS h FROM generate_series(1,5) AS i
+    SELECT hashset_agg(i) AS h FROM generate_series(1,5) AS i
     UNION ALL
-    SELECT hashset(j) AS h FROM generate_series(6,10) AS j
+    SELECT hashset_agg(j) AS h FROM generate_series(6,10) AS j
 ) q;
 
 /*

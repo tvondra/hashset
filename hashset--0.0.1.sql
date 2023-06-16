@@ -5,24 +5,24 @@
 CREATE TYPE int4hashset;
 
 CREATE OR REPLACE FUNCTION int4hashset_in(cstring)
-    RETURNS int4hashset
-    AS 'hashset', 'int4hashset_in'
-    LANGUAGE C IMMUTABLE STRICT;
+RETURNS int4hashset
+AS 'hashset', 'int4hashset_in'
+LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION int4hashset_out(int4hashset)
-    RETURNS cstring
-    AS 'hashset', 'int4hashset_out'
-    LANGUAGE C IMMUTABLE STRICT;
+RETURNS cstring
+AS 'hashset', 'int4hashset_out'
+LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION int4hashset_send(int4hashset)
-    RETURNS bytea
-    AS 'hashset', 'int4hashset_send'
-    LANGUAGE C IMMUTABLE STRICT;
+RETURNS bytea
+AS 'hashset', 'int4hashset_send'
+LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION int4hashset_recv(internal)
-    RETURNS int4hashset
-    AS 'hashset', 'int4hashset_recv'
-    LANGUAGE C IMMUTABLE STRICT;
+RETURNS int4hashset
+AS 'hashset', 'int4hashset_recv'
+LANGUAGE C IMMUTABLE STRICT;
 
 CREATE TYPE int4hashset (
     INPUT = int4hashset_in,
@@ -37,67 +37,71 @@ CREATE TYPE int4hashset (
  * Hashset Functions
  */
 
-CREATE OR REPLACE FUNCTION int4hashset()
-    RETURNS int4hashset
-    AS 'hashset', 'int4hashset_init'
-    LANGUAGE C IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION int4hashset_with_capacity(int)
-    RETURNS int4hashset
-    AS 'hashset', 'int4hashset_init'
-    LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION int4hashset(
+    capacity int DEFAULT 0,
+    load_factor float4 DEFAULT 0.75,
+    growth_factor float4 DEFAULT 2.0,
+    hashfn_id int DEFAULT 1
+)
+RETURNS int4hashset
+AS 'hashset', 'int4hashset_init'
+LANGUAGE C IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION hashset_add(int4hashset, int)
-    RETURNS int4hashset
-    AS 'hashset', 'int4hashset_add'
-    LANGUAGE C IMMUTABLE;
+RETURNS int4hashset
+AS 'hashset', 'int4hashset_add'
+LANGUAGE C IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION hashset_contains(int4hashset, int)
-    RETURNS bool
-    AS 'hashset', 'int4hashset_contains'
-    LANGUAGE C IMMUTABLE;
+RETURNS bool
+AS 'hashset', 'int4hashset_contains'
+LANGUAGE C IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION hashset_merge(int4hashset, int4hashset)
-    RETURNS int4hashset
-    AS 'hashset', 'int4hashset_merge'
-    LANGUAGE C IMMUTABLE;
+RETURNS int4hashset
+AS 'hashset', 'int4hashset_merge'
+LANGUAGE C IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION hashset_to_array(int4hashset)
-    RETURNS int[]
-    AS 'hashset', 'int4hashset_to_array'
-    LANGUAGE C IMMUTABLE;
+RETURNS int[]
+AS 'hashset', 'int4hashset_to_array'
+LANGUAGE C IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION hashset_count(int4hashset)
-    RETURNS bigint
-    AS 'hashset', 'int4hashset_count'
-    LANGUAGE C IMMUTABLE;
+RETURNS bigint
+AS 'hashset', 'int4hashset_count'
+LANGUAGE C IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION hashset_capacity(int4hashset)
-    RETURNS bigint
-    AS 'hashset', 'int4hashset_capacity'
-    LANGUAGE C IMMUTABLE;
+RETURNS bigint
+AS 'hashset', 'int4hashset_capacity'
+LANGUAGE C IMMUTABLE;
 
+CREATE OR REPLACE FUNCTION hashset_collisions(int4hashset)
+RETURNS bigint
+AS 'hashset', 'int4hashset_collisions'
+LANGUAGE C IMMUTABLE;
 
 /*
  * Aggregation Functions
  */
 
 CREATE OR REPLACE FUNCTION int4hashset_agg_add(p_pointer internal, p_value int)
-    RETURNS internal
-    AS 'hashset', 'int4hashset_agg_add'
-    LANGUAGE C IMMUTABLE;
+RETURNS internal
+AS 'hashset', 'int4hashset_agg_add'
+LANGUAGE C IMMUTABLE;
     
 CREATE OR REPLACE FUNCTION int4hashset_agg_final(p_pointer internal)
-    RETURNS int4hashset
-    AS 'hashset', 'int4hashset_agg_final'
-    LANGUAGE C IMMUTABLE;
+RETURNS int4hashset
+AS 'hashset', 'int4hashset_agg_final'
+LANGUAGE C IMMUTABLE;
     
 CREATE OR REPLACE FUNCTION int4hashset_agg_combine(p_pointer internal, p_pointer2 internal)
-    RETURNS internal
-    AS 'hashset', 'int4hashset_agg_combine'
-    LANGUAGE C IMMUTABLE;
+RETURNS internal
+AS 'hashset', 'int4hashset_agg_combine'
+LANGUAGE C IMMUTABLE;
 
-CREATE AGGREGATE hashset(int) (
+CREATE AGGREGATE hashset_agg(int) (
     SFUNC = int4hashset_agg_add,
     STYPE = internal,
     FINALFUNC = int4hashset_agg_final,
@@ -106,21 +110,21 @@ CREATE AGGREGATE hashset(int) (
 );
 
 CREATE OR REPLACE FUNCTION int4hashset_agg_add_set(p_pointer internal, p_value int4hashset)
-    RETURNS internal
-    AS 'hashset', 'int4hashset_agg_add_set'
-    LANGUAGE C IMMUTABLE;
+RETURNS internal
+AS 'hashset', 'int4hashset_agg_add_set'
+LANGUAGE C IMMUTABLE;
     
 CREATE OR REPLACE FUNCTION int4hashset_agg_final(p_pointer internal)
-    RETURNS int4hashset
-    AS 'hashset', 'int4hashset_agg_final'
-    LANGUAGE C IMMUTABLE;
+RETURNS int4hashset
+AS 'hashset', 'int4hashset_agg_final'
+LANGUAGE C IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION int4hashset_agg_combine(p_pointer internal, p_pointer2 internal)
-    RETURNS internal
-    AS 'hashset', 'int4hashset_agg_combine'
-    LANGUAGE C IMMUTABLE;
+RETURNS internal
+AS 'hashset', 'int4hashset_agg_combine'
+LANGUAGE C IMMUTABLE;
 
-CREATE AGGREGATE hashset(int4hashset) (
+CREATE AGGREGATE hashset_agg(int4hashset) (
     SFUNC = int4hashset_agg_add_set,
     STYPE = internal,
     FINALFUNC = int4hashset_agg_final,
@@ -133,9 +137,9 @@ CREATE AGGREGATE hashset(int4hashset) (
  */
 
 CREATE OR REPLACE FUNCTION hashset_equals(int4hashset, int4hashset)
-    RETURNS bool
-    AS 'hashset', 'int4hashset_equals'
-    LANGUAGE C IMMUTABLE STRICT;
+RETURNS bool
+AS 'hashset', 'int4hashset_equals'
+LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OPERATOR = (
     LEFTARG = int4hashset,
@@ -146,9 +150,9 @@ CREATE OPERATOR = (
 );
 
 CREATE OR REPLACE FUNCTION hashset_neq(int4hashset, int4hashset)
-    RETURNS bool
-    AS 'hashset', 'int4hashset_neq'
-    LANGUAGE C IMMUTABLE STRICT;
+RETURNS bool
+AS 'hashset', 'int4hashset_neq'
+LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OPERATOR <> (
     LEFTARG = int4hashset,
@@ -166,43 +170,43 @@ CREATE OPERATOR <> (
  */
 
 CREATE OR REPLACE FUNCTION hashset_hash(int4hashset)
-    RETURNS integer
-    AS 'hashset', 'int4hashset_hash'
-    LANGUAGE C IMMUTABLE STRICT;
+RETURNS integer
+AS 'hashset', 'int4hashset_hash'
+LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OPERATOR CLASS int4hashset_hash_ops
-    DEFAULT FOR TYPE int4hashset USING hash AS
-    OPERATOR 1 = (int4hashset, int4hashset),
-    FUNCTION 1 hashset_hash(int4hashset);
+DEFAULT FOR TYPE int4hashset USING hash AS
+OPERATOR 1 = (int4hashset, int4hashset),
+FUNCTION 1 hashset_hash(int4hashset);
 
 /*
  * Hashset Btree Operators
  */
 
 CREATE OR REPLACE FUNCTION hashset_lt(int4hashset, int4hashset)
-    RETURNS bool
-    AS 'hashset', 'int4hashset_lt'
-    LANGUAGE C IMMUTABLE STRICT;
+RETURNS bool
+AS 'hashset', 'int4hashset_lt'
+LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION hashset_le(int4hashset, int4hashset)
-    RETURNS boolean
-    AS 'hashset', 'int4hashset_le'
-    LANGUAGE C IMMUTABLE STRICT;
+RETURNS boolean
+AS 'hashset', 'int4hashset_le'
+LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION hashset_gt(int4hashset, int4hashset)
-    RETURNS boolean
-    AS 'hashset', 'int4hashset_gt'
-    LANGUAGE C IMMUTABLE STRICT;
+RETURNS boolean
+AS 'hashset', 'int4hashset_gt'
+LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION hashset_ge(int4hashset, int4hashset)
-    RETURNS boolean
-    AS 'hashset', 'int4hashset_ge'
-    LANGUAGE C IMMUTABLE STRICT;
+RETURNS boolean
+AS 'hashset', 'int4hashset_ge'
+LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION hashset_cmp(int4hashset, int4hashset)
-    RETURNS integer
-    AS 'hashset', 'int4hashset_cmp'
-    LANGUAGE C IMMUTABLE STRICT;
+RETURNS integer
+AS 'hashset', 'int4hashset_cmp'
+LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OPERATOR < (
     PROCEDURE = hashset_lt,
@@ -245,10 +249,10 @@ CREATE OPERATOR >= (
 );
 
 CREATE OPERATOR CLASS int4hashset_btree_ops
-    DEFAULT FOR TYPE int4hashset USING btree AS
-    OPERATOR 1 < (int4hashset, int4hashset),
-    OPERATOR 2 <= (int4hashset, int4hashset),
-    OPERATOR 3 = (int4hashset, int4hashset),
-    OPERATOR 4 >= (int4hashset, int4hashset),
-    OPERATOR 5 > (int4hashset, int4hashset),
-    FUNCTION 1 hashset_cmp(int4hashset, int4hashset);
+DEFAULT FOR TYPE int4hashset USING btree AS
+OPERATOR 1 < (int4hashset, int4hashset),
+OPERATOR 2 <= (int4hashset, int4hashset),
+OPERATOR 3 = (int4hashset, int4hashset),
+OPERATOR 4 >= (int4hashset, int4hashset),
+OPERATOR 5 > (int4hashset, int4hashset),
+FUNCTION 1 hashset_cmp(int4hashset, int4hashset);

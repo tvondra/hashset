@@ -29,9 +29,12 @@ PG_MODULE_MAGIC;
 typedef struct int4hashset_t {
 	int32		vl_len_;		/* varlena header (do not touch directly!) */
 	int32		flags;			/* reserved for future use (versioning, ...) */
-	int32		maxelements;	/* max number of element we have space for */
+	int32		capacity;		/* max number of element we have space for */
 	int32		nelements;		/* number of items added to the hashset */
 	int32		hashfn_id;		/* ID of the hash function used */
+	float4		load_factor;	/* Load factor before triggering resize */
+	float4		growth_factor;	/* Growth factor when resizing the hashset */
+	int32		ncollisions;	/* Number of collisions */
 	char		data[FLEXIBLE_ARRAY_MEMBER];
 } int4hashset_t;
 
@@ -46,6 +49,16 @@ static Datum int32_to_array(FunctionCallInfo fcinfo, int32 * d, int len);
 #define CEIL_DIV(a, b) (((a) + (b) - 1) / (b))
 #define HASHSET_STEP 13
 #define JENKINS_LOOKUP3_HASHFN_ID 1
+#define MURMURHASH32_HASHFN_ID 2
+#define NAIVE_HASHFN_ID 3
+
+/*
+ * These defaults should match the the SQL function int4hashset()
+ */
+#define DEFAULT_INITIAL_CAPACITY 0
+#define DEFAULT_LOAD_FACTOR 0.75
+#define DEFAULT_GROWTH_FACTOR 2.0
+#define DEFAULT_HASHFN_ID JENKINS_LOOKUP3_HASHFN_ID
 
 PG_FUNCTION_INFO_V1(int4hashset_in);
 PG_FUNCTION_INFO_V1(int4hashset_out);
@@ -57,6 +70,7 @@ PG_FUNCTION_INFO_V1(int4hashset_count);
 PG_FUNCTION_INFO_V1(int4hashset_merge);
 PG_FUNCTION_INFO_V1(int4hashset_init);
 PG_FUNCTION_INFO_V1(int4hashset_capacity);
+PG_FUNCTION_INFO_V1(int4hashset_collisions);
 PG_FUNCTION_INFO_V1(int4hashset_agg_add_set);
 PG_FUNCTION_INFO_V1(int4hashset_agg_add);
 PG_FUNCTION_INFO_V1(int4hashset_agg_final);
@@ -81,6 +95,7 @@ Datum int4hashset_count(PG_FUNCTION_ARGS);
 Datum int4hashset_merge(PG_FUNCTION_ARGS);
 Datum int4hashset_init(PG_FUNCTION_ARGS);
 Datum int4hashset_capacity(PG_FUNCTION_ARGS);
+Datum int4hashset_collisions(PG_FUNCTION_ARGS);
 Datum int4hashset_agg_add(PG_FUNCTION_ARGS);
 Datum int4hashset_agg_add_set(PG_FUNCTION_ARGS);
 Datum int4hashset_agg_final(PG_FUNCTION_ARGS);
@@ -118,23 +133,28 @@ hashset_isspace(char ch)
 }
 
 static int4hashset_t *
-int4hashset_allocate(int maxelements)
+int4hashset_allocate(
+	int capacity,
+	float4 load_factor,
+	float4 growth_factor,
+	int hashfn_id
+)
 {
 	Size			len;
 	int4hashset_t  *set;
 	char		   *ptr;
 
 	/*
-	 * Ensure that maxelements is not divisible by HASHSET_STEP;
+	 * Ensure that capacity is not divisible by HASHSET_STEP;
 	 * i.e. the step size used in hashset_add_element()
 	 * and hashset_contains_element().
 	 */
-	while (maxelements % HASHSET_STEP == 0)
-		maxelements++;
+	while (capacity % HASHSET_STEP == 0)
+		capacity++;
 
 	len = offsetof(int4hashset_t, data);
-	len += CEIL_DIV(maxelements, 8);
-	len += maxelements * sizeof(int32);
+	len += CEIL_DIV(capacity, 8);
+	len += capacity * sizeof(int32);
 
 	ptr = palloc0(len);
 	SET_VARSIZE(ptr, len);
@@ -142,9 +162,11 @@ int4hashset_allocate(int maxelements)
 	set = (int4hashset_t *) ptr;
 
 	set->flags = 0;
-	set->maxelements = maxelements;
+	set->capacity = capacity;
 	set->nelements = 0;
-	set->hashfn_id = JENKINS_LOOKUP3_HASHFN_ID;
+	set->hashfn_id = hashfn_id;
+	set->load_factor = load_factor;
+	set->growth_factor = growth_factor;
 
 	set->flags |= 0;
 
@@ -176,7 +198,12 @@ int4hashset_in(PG_FUNCTION_ARGS)
 	str++;
 
 	/* Initial size based on input length (arbitrary, could be optimized) */
-	set = int4hashset_allocate(len/2);
+	set = int4hashset_allocate(
+		len/2,
+		DEFAULT_LOAD_FACTOR,
+		DEFAULT_GROWTH_FACTOR,
+		DEFAULT_HASHFN_ID
+	);
 
 	while (true)
 	{
@@ -202,7 +229,7 @@ int4hashset_in(PG_FUNCTION_ARGS)
 		}
 
 		/* Add the value to the hashset, resize if needed */
-		if (set->nelements >= set->maxelements)
+		if (set->nelements >= set->capacity)
 		{
 			set = int4hashset_resize(set);
 		}
@@ -261,7 +288,7 @@ int4hashset_out(PG_FUNCTION_ARGS)
 
 	/* Calculate the pointer to the bitmap and values array */
 	bitmap = set->data;
-	values = (int32 *) (set->data + CEIL_DIV(set->maxelements, 8));
+	values = (int32 *) (set->data + CEIL_DIV(set->capacity, 8));
 
 	/* Initialize the StringInfo buffer */
 	initStringInfo(&str);
@@ -270,7 +297,7 @@ int4hashset_out(PG_FUNCTION_ARGS)
 	appendStringInfoChar(&str, '{');
 
 	/* Loop through the elements and append them to the string */
-	for (i = 0; i < set->maxelements; i++)
+	for (i = 0; i < set->capacity; i++)
 	{
 		int byte = i / 8;
 		int bit = i % 8;
@@ -305,7 +332,7 @@ int4hashset_send(PG_FUNCTION_ARGS)
 
 	/* Send the non-data fields */
 	pq_sendint32(&buf, set->flags);
-	pq_sendint32(&buf, set->maxelements);
+	pq_sendint32(&buf, set->capacity);
 	pq_sendint32(&buf, set->nelements);
 	pq_sendint32(&buf, set->hashfn_id);
 
@@ -328,7 +355,7 @@ int4hashset_recv(PG_FUNCTION_ARGS)
 
 	/* Read fields from buffer */
 	int32 flags = pq_getmsgint(buf, 4);
-	int32 maxelements = pq_getmsgint(buf, 4);
+	int32 capacity = pq_getmsgint(buf, 4);
 	int32 nelements = pq_getmsgint(buf, 4);
 	int32 hashfn_id = pq_getmsgint(buf, 4);
 
@@ -349,7 +376,7 @@ int4hashset_recv(PG_FUNCTION_ARGS)
 
 	/* Populate the structure */
 	set->flags = flags;
-	set->maxelements = maxelements;
+	set->capacity = capacity;
 	set->nelements = nelements;
 	set->hashfn_id = hashfn_id;
 	memcpy(set->data, binary_data, data_size);
@@ -376,14 +403,14 @@ int4hashset_to_array(PG_FUNCTION_ARGS)
 	set = (int4hashset_t *) PG_GETARG_INT4HASHSET(0);
 
 	sbitmap = set->data;
-	svalues = (int32 *) (set->data + CEIL_DIV(set->maxelements, 8));
+	svalues = (int32 *) (set->data + CEIL_DIV(set->capacity, 8));
 
 	/* number of values to store in the array */
 	nvalues = set->nelements;
 	values = (int32 *) palloc(sizeof(int32) * nvalues);
 
 	idx = 0;
-	for (i = 0; i < set->maxelements; i++)
+	for (i = 0; i < set->capacity; i++)
 	{
 		int	byte = (i / 8);
 		int	bit = (i % 8);
@@ -426,15 +453,22 @@ static int4hashset_t *
 int4hashset_resize(int4hashset_t * set)
 {
 	int				i;
-	int4hashset_t	*new = int4hashset_allocate(set->maxelements * 2);
+	int4hashset_t	*new;
 	char			*bitmap;
 	int32			*values;
 
+	new = int4hashset_allocate(
+		set->capacity * 2,
+		set->load_factor,
+		set->growth_factor,
+		set->hashfn_id
+	);
+
 	/* Calculate the pointer to the bitmap and values array */
 	bitmap = set->data;
-	values = (int32 *) (set->data + CEIL_DIV(set->maxelements, 8));
+	values = (int32 *) (set->data + CEIL_DIV(set->capacity, 8));
 
-	for (i = 0; i < set->maxelements; i++)
+	for (i = 0; i < set->capacity; i++)
 	{
 		int	byte = (i / 8);
 		int	bit = (i % 8);
@@ -455,12 +489,20 @@ int4hashset_add_element(int4hashset_t *set, int32 value)
 	char   *bitmap;
 	int32  *values;
 
-	if (set->nelements > set->maxelements * 0.75)
+	if (set->nelements > set->capacity * set->load_factor)
 		set = int4hashset_resize(set);
 
 	if (set->hashfn_id == JENKINS_LOOKUP3_HASHFN_ID)
 	{
-		hash = hash_bytes_uint32((uint32) value) % set->maxelements;
+		hash = hash_bytes_uint32((uint32) value) % set->capacity;
+	}
+	else if (set->hashfn_id == MURMURHASH32_HASHFN_ID)
+	{
+		hash = murmurhash32((uint32) value) % set->capacity;
+	}
+	else if (set->hashfn_id == NAIVE_HASHFN_ID)
+	{
+		hash = ((uint32) value * 7691 + 4201) % set->capacity;
 	}
 	else
 	{
@@ -470,7 +512,7 @@ int4hashset_add_element(int4hashset_t *set, int32 value)
 	}
 
 	bitmap = set->data;
-	values = (int32 *) (set->data + CEIL_DIV(set->maxelements, 8));
+	values = (int32 *) (set->data + CEIL_DIV(set->capacity, 8));
 
 	while (true)
 	{
@@ -484,7 +526,10 @@ int4hashset_add_element(int4hashset_t *set, int32 value)
 			if (values[hash] == value)
 				break;
 
-			hash = (hash + HASHSET_STEP) % set->maxelements;
+			/* Increment the collision counter */
+			set->ncollisions++;
+
+			hash = (hash + HASHSET_STEP) % set->capacity;
 			continue;
 		}
 
@@ -512,7 +557,15 @@ int4hashset_contains_element(int4hashset_t *set, int32 value)
 
 	if (set->hashfn_id == JENKINS_LOOKUP3_HASHFN_ID)
 	{
-		hash = hash_bytes_uint32((uint32) value) % set->maxelements;
+		hash = hash_bytes_uint32((uint32) value) % set->capacity;
+	}
+	else if (set->hashfn_id == MURMURHASH32_HASHFN_ID)
+	{
+		hash = murmurhash32((uint32) value) % set->capacity;
+	}
+	else if (set->hashfn_id == NAIVE_HASHFN_ID)
+	{
+		hash = ((uint32) value * 7691 + 4201) % set->capacity;
 	}
 	else
 	{
@@ -522,7 +575,7 @@ int4hashset_contains_element(int4hashset_t *set, int32 value)
 	}
 
 	bitmap = set->data;
-	values = (int32 *) (set->data + CEIL_DIV(set->maxelements, 8));
+	values = (int32 *) (set->data + CEIL_DIV(set->capacity, 8));
 
 	while (true)
 	{
@@ -538,12 +591,12 @@ int4hashset_contains_element(int4hashset_t *set, int32 value)
 			return true;
 
 		/* move to the next element */
-		hash = (hash + HASHSET_STEP) % set->maxelements;
+		hash = (hash + HASHSET_STEP) % set->capacity;
 
 		num_probes++; /* Increment the number of probes */
 
 		/* Check if we have probed all slots */
-		if (num_probes >= set->maxelements)
+		if (num_probes >= set->capacity)
 			return false; /* Avoid infinite loop */
 	}
 }
@@ -563,7 +616,14 @@ int4hashset_add(PG_FUNCTION_ARGS)
 
 	/* if there's no hashset allocated, create it now */
 	if (PG_ARGISNULL(0))
-		set = int4hashset_allocate(64);
+	{
+		set = int4hashset_allocate(
+			DEFAULT_INITIAL_CAPACITY,
+			DEFAULT_LOAD_FACTOR,
+			DEFAULT_GROWTH_FACTOR,
+			DEFAULT_HASHFN_ID
+		);
+	}
 	else
 	{
 		/* make sure we are working with a non-toasted and non-shared copy of the input */
@@ -597,9 +657,9 @@ int4hashset_merge(PG_FUNCTION_ARGS)
 	setb = PG_GETARG_INT4HASHSET(1);
 
 	bitmap = setb->data;
-	values = (int32 *) (setb->data + CEIL_DIV(setb->maxelements, 8));
+	values = (int32 *) (setb->data + CEIL_DIV(setb->capacity, 8));
 
-	for (i = 0; i < setb->maxelements; i++)
+	for (i = 0; i < setb->capacity; i++)
 	{
 		int	byte = (i / 8);
 		int	bit = (i % 8);
@@ -614,19 +674,51 @@ int4hashset_merge(PG_FUNCTION_ARGS)
 Datum
 int4hashset_init(PG_FUNCTION_ARGS)
 {
-	if (PG_NARGS() == 0) {
-		/*
-		 * No initial capacity argument was passed,
-		 * allocate hashset with zero capacity
-		 */
-		PG_RETURN_POINTER(int4hashset_allocate(0));
-	} else {
-		/*
-		 * Initial capacity argument was passed,
-		 * allocate hashset with the specified capacity
-		 */
-		PG_RETURN_POINTER(int4hashset_allocate(PG_GETARG_INT32(0)));
+	int4hashset_t *set;
+	int32 initial_capacity = PG_GETARG_INT32(0);
+	float4 load_factor = PG_GETARG_FLOAT4(1);
+	float4 growth_factor = PG_GETARG_FLOAT4(2);
+	int32 hashfn_id = PG_GETARG_INT32(3);
+
+	/* Validate input arguments */
+	if (!(initial_capacity >= 0))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("initial capacity cannot be negative")));
 	}
+
+	if (!(load_factor > 0.0 && load_factor < 1.0))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("load factor must be between 0.0 and 1.0")));
+	}
+
+	if (!(growth_factor > 1.0))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("growth factor must be greater than 1.0")));
+	}
+
+	if (!(hashfn_id == JENKINS_LOOKUP3_HASHFN_ID ||
+	      hashfn_id == MURMURHASH32_HASHFN_ID ||
+		  hashfn_id == NAIVE_HASHFN_ID))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("Invalid hash function ID")));
+	}
+
+	set = int4hashset_allocate(
+		initial_capacity,
+		load_factor,
+		growth_factor,
+		hashfn_id
+	);
+
+	PG_RETURN_POINTER(set);
 }
 
 Datum
@@ -667,7 +759,20 @@ int4hashset_capacity(PG_FUNCTION_ARGS)
 
 	set = (int4hashset_t *) PG_GETARG_POINTER(0);
 
-	PG_RETURN_INT64(set->maxelements);
+	PG_RETURN_INT64(set->capacity);
+}
+
+Datum
+int4hashset_collisions(PG_FUNCTION_ARGS)
+{
+	int4hashset_t	*set;
+
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+
+	set = PG_GETARG_INT4HASHSET(0);
+
+	PG_RETURN_INT64(set->ncollisions);
 }
 
 Datum
@@ -699,7 +804,12 @@ int4hashset_agg_add(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(0))
 	{
 		oldcontext = MemoryContextSwitchTo(aggcontext);
-		state = int4hashset_allocate(64);
+		state = int4hashset_allocate(
+			DEFAULT_INITIAL_CAPACITY,
+			DEFAULT_LOAD_FACTOR,
+			DEFAULT_GROWTH_FACTOR,
+			DEFAULT_HASHFN_ID
+		);
 		MemoryContextSwitchTo(oldcontext);
 	}
 	else
@@ -741,7 +851,12 @@ int4hashset_agg_add_set(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(0))
 	{
 		oldcontext = MemoryContextSwitchTo(aggcontext);
-		state = int4hashset_allocate(64);
+		state = int4hashset_allocate(
+			DEFAULT_INITIAL_CAPACITY,
+			DEFAULT_LOAD_FACTOR,
+			DEFAULT_GROWTH_FACTOR,
+			DEFAULT_HASHFN_ID
+		);
 		MemoryContextSwitchTo(oldcontext);
 	}
 	else
@@ -758,9 +873,9 @@ int4hashset_agg_add_set(PG_FUNCTION_ARGS)
 		value = PG_GETARG_INT4HASHSET(1);
 
 		bitmap = value->data;
-		values = (int32 *) (value->data + CEIL_DIV(value->maxelements, 8));
+		values = (int32 *) (value->data + CEIL_DIV(value->capacity, 8));
 
-		for (i = 0; i < value->maxelements; i++)
+		for (i = 0; i < value->capacity; i++)
 		{
 			int	byte = (i / 8);
 			int	bit = (i % 8);
@@ -835,9 +950,9 @@ int4hashset_agg_combine(PG_FUNCTION_ARGS)
 	dst = (int4hashset_t *) PG_GETARG_POINTER(0);
 
 	bitmap = src->data;
-	values = (int32 *) (src->data + CEIL_DIV(src->maxelements, 8));
+	values = (int32 *) (src->data + CEIL_DIV(src->capacity, 8));
 
-	for (i = 0; i < src->maxelements; i++)
+	for (i = 0; i < src->capacity; i++)
 	{
 		int	byte = (i / 8);
 		int	bit = (i % 8);
@@ -868,12 +983,12 @@ int4hashset_equals(PG_FUNCTION_ARGS)
 		PG_RETURN_BOOL(false);
 
 	bitmap_a = a->data;
-	values_a = (int32 *)(a->data + CEIL_DIV(a->maxelements, 8));
+	values_a = (int32 *)(a->data + CEIL_DIV(a->capacity, 8));
 
 	/*
 	 * Check if every element in a is also in b
 	 */
-	for (i = 0; i < a->maxelements; i++)
+	for (i = 0; i < a->capacity; i++)
 	{
 		int byte = (i / 8);
 		int bit = (i % 8);
@@ -918,10 +1033,10 @@ Datum int4hashset_hash(PG_FUNCTION_ARGS)
 
     /* Access the data array */
     char *bitmap = set->data;
-    int32 *values = (int32 *)(set->data + CEIL_DIV(set->maxelements, 8));
+    int32 *values = (int32 *)(set->data + CEIL_DIV(set->capacity, 8));
 
     /* Iterate through all elements */
-    for (int32 i = 0; i < set->maxelements; i++)
+    for (int32 i = 0; i < set->capacity; i++)
     {
         int byte = i / 8;
         int bit = i % 8;
@@ -1010,13 +1125,13 @@ int4hashset_cmp(PG_FUNCTION_ARGS)
 	int i = 0, j = 0;
 
 	bitmap_a = a->data;
-	values_a = (int32 *)(a->data + CEIL_DIV(a->maxelements, 8));
+	values_a = (int32 *)(a->data + CEIL_DIV(a->capacity, 8));
 
 	bitmap_b = b->data;
-	values_b = (int32 *)(b->data + CEIL_DIV(b->maxelements, 8));
+	values_b = (int32 *)(b->data + CEIL_DIV(b->capacity, 8));
 
 	/* Iterate over the elements in each hashset independently */
-	while(i < a->maxelements && j < b->maxelements)
+	while(i < a->capacity && j < b->capacity)
 	{
 		int byte_a = (i / 8);
 		int bit_a = (i % 8);
@@ -1057,9 +1172,9 @@ int4hashset_cmp(PG_FUNCTION_ARGS)
 	 * If all compared elements are equal,
 	 * then compare the remaining elements in the larger hashset
 	 */
-	if (i < a->maxelements)
+	if (i < a->capacity)
 		PG_RETURN_INT32(1);
-	else if (j < b->maxelements)
+	else if (j < b->capacity)
 		PG_RETURN_INT32(-1);
 	else
 		PG_RETURN_INT32(0);

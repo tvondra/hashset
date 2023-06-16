@@ -12,11 +12,11 @@
  * hashset, thereby preventing alteration of the original data.
  */
 SELECT
-    q.hashset,
-    hashset_add(hashset,4)
+    q.hashset_agg,
+    hashset_add(hashset_agg,4)
 FROM
 (
     SELECT
-        hashset(generate_series)
+        hashset_agg(generate_series)
     FROM generate_series(1,3)
 ) q;

@@ -30,15 +30,20 @@ LINE 1: SELECT '{2147483648}'::int4hashset;
 /*
  * Hashset Functions
  */
-SELECT int4hashset(); -- init empty int4hashset with no capacity
+SELECT int4hashset();
  int4hashset 
 -------------
  {}
 (1 row)
 
-SELECT int4hashset_with_capacity(10); -- init empty int4hashset with specified capacity
- int4hashset_with_capacity 
----------------------------
+SELECT int4hashset(
+    capacity := 10,
+    load_factor := 0.9,
+    growth_factor := 1.1,
+    hashfn_id := 1
+);
+ int4hashset 
+-------------
  {}
 (1 row)
 
@@ -90,7 +95,7 @@ SELECT hashset_count('{1,2,3}'::int4hashset); -- 3
              3
 (1 row)
 
-SELECT hashset_capacity(int4hashset_with_capacity(10)); -- 10
+SELECT hashset_capacity(int4hashset(capacity := 10)); -- 10
  hashset_capacity 
 ------------------
                10
@@ -99,21 +104,21 @@ SELECT hashset_capacity(int4hashset_with_capacity(10)); -- 10
 /*
  * Aggregation Functions
  */
-SELECT hashset(i) FROM generate_series(1,10) AS i;
-        hashset         
+SELECT hashset_agg(i) FROM generate_series(1,10) AS i;
+      hashset_agg       
 ------------------------
- {8,1,10,3,9,4,6,2,5,7}
+ {6,10,1,8,2,3,4,5,9,7}
 (1 row)
 
-SELECT hashset(h) FROM
+SELECT hashset_agg(h) FROM
 (
-    SELECT hashset(i) AS h FROM generate_series(1,5) AS i
+    SELECT hashset_agg(i) AS h FROM generate_series(1,5) AS i
     UNION ALL
-    SELECT hashset(j) AS h FROM generate_series(6,10) AS j
+    SELECT hashset_agg(j) AS h FROM generate_series(6,10) AS j
 ) q;
-        hashset         
+      hashset_agg       
 ------------------------
- {8,1,10,3,9,4,6,2,5,7}
+ {6,8,1,3,2,10,4,5,9,7}
 (1 row)
 
 /*
