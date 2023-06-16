@@ -1,7 +1,7 @@
 # hashset
 
 This PostgreSQL extension implements hashset, a data structure (type)
-providing a collection of integer items with fast lookup.
+providing a collection of unique, not null integer items with fast lookup.
 
 
 ## Version
@@ -111,6 +111,12 @@ To install the extension on any platform, follow these general steps:
 4. Compile the extension using `make`.
 5. Install the extension using `sudo make install`.
 6. Run the tests using `make installcheck` (optional).
+
+To use a different PostgreSQL installation, point configure to a different `pg_config`, using following command:
+```sh
+make PG_CONFIG=/else/where/pg_config
+sudo make install PG_CONFIG=/else/where/pg_config
+```
 
 In your PostgreSQL connection, enable the hashset extension using the following SQL command:
 ```sql
