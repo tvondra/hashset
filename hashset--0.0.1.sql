@@ -82,6 +82,12 @@ RETURNS bigint
 AS 'hashset', 'int4hashset_collisions'
 LANGUAGE C IMMUTABLE;
 
+CREATE OR REPLACE FUNCTION int4_add_int4hashset(int4, int4hashset)
+RETURNS int4hashset
+AS $$SELECT $2 || $1$$
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT COST 1;
+
 /*
  * Aggregation Functions
  */
@@ -163,6 +169,20 @@ CREATE OPERATOR <> (
     RESTRICT = neqsel,
     JOIN = neqjoinsel,
     HASHES
+);
+
+CREATE OPERATOR || (
+    leftarg = int4hashset,
+    rightarg = int4,
+    function = hashset_add,
+    commutator = ||
+);
+
+CREATE OPERATOR || (
+    leftarg = int4,
+    rightarg = int4hashset,
+    function = int4_add_int4hashset,
+    commutator = ||
 );
 
 /*

@@ -58,6 +58,7 @@ $$ LANGUAGE plpgsql;
 
 \echo *** Testing 100000 random ints
 
+SELECT setseed(0.12345);
 \echo - Testing default hash function (Jenkins/lookup3)
 
 DO
@@ -75,6 +76,7 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
+SELECT setseed(0.12345);
 \echo - Testing Murmurhash32
 
 DO
@@ -92,6 +94,7 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
+SELECT setseed(0.12345);
 \echo - Testing naive hash function
 
 DO

@@ -66,6 +66,9 @@ SELECT '{1,2,3}'::int4hashset <> '{4,5,6}'::int4hashset; -- true
 SELECT '{1,2,3}'::int4hashset <> '{1,2}'::int4hashset; -- true
 SELECT '{1,2,3}'::int4hashset <> '{1,2,3,4}'::int4hashset; -- true
 
+SELECT '{1,2,3}'::int4hashset || 4;
+SELECT 4 || '{1,2,3}'::int4hashset;
+
 /*
  * Hashset Hash Operators
  */

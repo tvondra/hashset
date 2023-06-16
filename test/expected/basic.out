@@ -220,6 +220,18 @@ SELECT '{1,2,3}'::int4hashset <> '{1,2,3,4}'::int4hashset; -- true
  t
 (1 row)
 
+SELECT '{1,2,3}'::int4hashset || 4;
+ ?column?  
+-----------
+ {1,3,2,4}
+(1 row)
+
+SELECT 4 || '{1,2,3}'::int4hashset;
+ ?column?  
+-----------
+ {1,3,2,4}
+(1 row)
+
 /*
  * Hashset Hash Operators
  */
