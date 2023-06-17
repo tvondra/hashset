@@ -119,7 +119,7 @@ CREATE OR REPLACE FUNCTION int4hashset_agg_add_set(p_pointer internal, p_value i
 RETURNS internal
 AS 'hashset', 'int4hashset_agg_add_set'
 LANGUAGE C IMMUTABLE;
-    
+
 CREATE OR REPLACE FUNCTION int4hashset_agg_final(p_pointer internal)
 RETURNS int4hashset
 AS 'hashset', 'int4hashset_agg_final'

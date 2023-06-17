@@ -1,5 +1,5 @@
 MODULE_big = hashset
-OBJS = hashset.o
+OBJS = hashset.o hashset-api.o
 
 EXTENSION = hashset
 DATA = hashset--0.0.1.sql
