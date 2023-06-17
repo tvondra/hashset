@@ -35,6 +35,7 @@ typedef struct int4hashset_t {
 	float4		load_factor;	/* Load factor before triggering resize */
 	float4		growth_factor;	/* Growth factor when resizing the hashset */
 	int32		ncollisions;	/* Number of collisions */
+	int32		hash;			/* Stored hash value of the hashset */
 	char		data[FLEXIBLE_ARRAY_MEMBER];
 } int4hashset_t;
 
@@ -167,6 +168,7 @@ int4hashset_allocate(
 	set->hashfn_id = hashfn_id;
 	set->load_factor = load_factor;
 	set->growth_factor = growth_factor;
+	set->hash = 0; /* Initial hash value */
 
 	set->flags |= 0;
 
@@ -486,6 +488,7 @@ int4hashset_add_element(int4hashset_t *set, int32 value)
 	int		byte;
 	int		bit;
 	uint32	hash;
+	uint32	position;
 	char   *bitmap;
 	int32  *values;
 
@@ -494,15 +497,15 @@ int4hashset_add_element(int4hashset_t *set, int32 value)
 
 	if (set->hashfn_id == JENKINS_LOOKUP3_HASHFN_ID)
 	{
-		hash = hash_bytes_uint32((uint32) value) % set->capacity;
+		hash = hash_bytes_uint32((uint32) value);
 	}
 	else if (set->hashfn_id == MURMURHASH32_HASHFN_ID)
 	{
-		hash = murmurhash32((uint32) value) % set->capacity;
+		hash = murmurhash32((uint32) value);
 	}
 	else if (set->hashfn_id == NAIVE_HASHFN_ID)
 	{
-		hash = ((uint32) value * 7691 + 4201) % set->capacity;
+		hash = ((uint32) value * 7691 + 4201);
 	}
 	else
 	{
@@ -511,31 +514,35 @@ int4hashset_add_element(int4hashset_t *set, int32 value)
 				errmsg("invalid hash function ID: \"%d\"", set->hashfn_id)));
 	}
 
+    position = hash % set->capacity;
+
 	bitmap = set->data;
 	values = (int32 *) (set->data + CEIL_DIV(set->capacity, 8));
 
 	while (true)
 	{
-		byte = (hash / 8);
-		bit = (hash % 8);
+		byte = (position / 8);
+		bit = (position % 8);
 
 		/* the item is already used - maybe it's the same value? */
 		if (bitmap[byte] & (0x01 << bit))
 		{
 			/* same value, we're done */
-			if (values[hash] == value)
+			if (values[position] == value)
 				break;
 
 			/* Increment the collision counter */
 			set->ncollisions++;
 
-			hash = (hash + HASHSET_STEP) % set->capacity;
+			position = (position + HASHSET_STEP) % set->capacity;
 			continue;
 		}
 
 		/* found an empty spot, before hitting the value first */
 		bitmap[byte] |= (0x01 << bit);
-		values[hash] = value;
+		values[position] = value;
+
+		set->hash ^= hash;
 
 		set->nelements++;
 
@@ -1028,29 +1035,7 @@ Datum int4hashset_hash(PG_FUNCTION_ARGS)
 {
     int4hashset_t *set = PG_GETARG_INT4HASHSET(0);
 
-    /* Initial hash value */
-    uint32 hash = 0;
-
-    /* Access the data array */
-    char *bitmap = set->data;
-    int32 *values = (int32 *)(set->data + CEIL_DIV(set->capacity, 8));
-
-    /* Iterate through all elements */
-    for (int32 i = 0; i < set->capacity; i++)
-    {
-        int byte = i / 8;
-        int bit = i % 8;
-
-        /* Check if the current position is occupied */
-        if (bitmap[byte] & (0x01 << bit))
-        {
-            /* Combine the hash value of the current element with the total hash */
-            hash = hash_combine(hash, hash_uint32(values[i]));
-        }
-    }
-
-    /* Return the final hash value */
-    PG_RETURN_INT32(hash);
+    PG_RETURN_INT32(set->hash);
 }
 
 
@@ -1114,68 +1099,112 @@ int4hashset_ge(PG_FUNCTION_ARGS)
 }
 
 
+static int
+int32_cmp(const void *a, const void *b)
+{
+	int32 arg1 = *(const int32 *)a;
+	int32 arg2 = *(const int32 *)b;
+
+	if (arg1 < arg2) return -1;
+	if (arg1 > arg2) return 1;
+	return 0;
+}
+
+
+static int32 *
+int4hashset_extract_sorted_elements(int4hashset_t *set)
+{
+	/* Allocate memory for the elements array */
+	int32 *elements = palloc(set->nelements * sizeof(int32));
+
+	/* Access the data array */
+	char *bitmap = set->data;
+	int32 *values = (int32 *)(set->data + CEIL_DIV(set->capacity, 8));
+
+	/* Counter for the number of extracted elements */
+	int32 nextracted = 0;
+
+	/* Iterate through all elements */
+	for (int32 i = 0; i < set->capacity; i++)
+	{
+		int byte = i / 8;
+		int bit = i % 8;
+
+		/* Check if the current position is occupied */
+		if (bitmap[byte] & (0x01 << bit))
+		{
+			/* Add the value to the elements array */
+			elements[nextracted++] = values[i];
+		}
+	}
+
+	/* Make sure we extracted the correct number of elements */
+	Assert(nextracted == set->nelements);
+
+	/* Sort the elements array */
+	qsort(elements, nextracted, sizeof(int32), int32_cmp);
+
+	/* Return the sorted elements array */
+	return elements;
+}
+
+
 Datum
 int4hashset_cmp(PG_FUNCTION_ARGS)
 {
 	int4hashset_t *a = PG_GETARG_INT4HASHSET(0);
 	int4hashset_t *b = PG_GETARG_INT4HASHSET(1);
-
-	char *bitmap_a, *bitmap_b;
-	int32 *values_a, *values_b;
-	int i = 0, j = 0;
-
-	bitmap_a = a->data;
-	values_a = (int32 *)(a->data + CEIL_DIV(a->capacity, 8));
-
-	bitmap_b = b->data;
-	values_b = (int32 *)(b->data + CEIL_DIV(b->capacity, 8));
-
-	/* Iterate over the elements in each hashset independently */
-	while(i < a->capacity && j < b->capacity)
-	{
-		int byte_a = (i / 8);
-		int bit_a = (i % 8);
-
-		int byte_b = (j / 8);
-		int bit_b = (j % 8);
-
-		bool has_elem_a = bitmap_a[byte_a] & (0x01 << bit_a);
-		bool has_elem_b = bitmap_b[byte_b] & (0x01 << bit_b);
-
-		int32 value_a;
-		int32 value_b;
-
-		/* Skip if position is empty in either bitmap */
-		if (!has_elem_a)
-		{
-			i++;
-			continue;
-		}
-
-		if (!has_elem_b)
-		{
-			j++;
-			continue;
-		}
-
-		/* Both hashsets have an element at the current position */
-		value_a = values_a[i++];
-		value_b = values_b[j++];
-
-		if (value_a < value_b)
-			PG_RETURN_INT32(-1);
-		else if (value_a > value_b)
-			PG_RETURN_INT32(1);
-	}
+	int32		  *elements_a;
+	int32		  *elements_b;
 
 	/*
-	 * If all compared elements are equal,
-	 * then compare the remaining elements in the larger hashset
+	 * Compare the hashes first, if they are different,
+	 * we can immediately tell which set is 'greater'
 	 */
-	if (i < a->capacity)
-		PG_RETURN_INT32(1);
-	else if (j < b->capacity)
+	if (a->hash < b->hash)
 		PG_RETURN_INT32(-1);
-	else
-		PG_RETURN_INT32(0);
+	else if (a->hash > b->hash)
+		PG_RETURN_INT32(1);
+
+	/*
+	 * If hashes are equal, perform a more rigorous comparison
+	 */
+
+	/*
+	 * If number of elements are different,
+	 * we can use that to deterministically return -1 or 1
+	 */
+	if (a->nelements < b->nelements)
+		PG_RETURN_INT32(-1);
+	else if (a->nelements > b->nelements)
+		PG_RETURN_INT32(1);
+
+	/* Assert that the number of elements in both hashsets are equal */
+	Assert(a->nelements == b->nelements);
+
+	/* Extract and sort elements from each set */
+	elements_a = int4hashset_extract_sorted_elements(a);
+	elements_b = int4hashset_extract_sorted_elements(b);
+
+	/* Now we can perform a lexicographical comparison */
+	for (int32 i = 0; i < a->nelements; i++)
+	{
+		if (elements_a[i] < elements_b[i])
+		{
+			pfree(elements_a);
+			pfree(elements_b);
+			PG_RETURN_INT32(-1);
+		}
+		else if (elements_a[i] > elements_b[i])
+		{
+			pfree(elements_a);
+			pfree(elements_b);
+			PG_RETURN_INT32(1);
+		}
+	}
+
+	/* All elements are equal, so the sets are equal */
+	pfree(elements_a);
+	pfree(elements_b);
+	PG_RETURN_INT32(0);
 }

@@ -10,7 +10,7 @@ SERVER_INCLUDES=-I$(shell pg_config --includedir-server)
 CLIENT_INCLUDES=-I$(shell pg_config --includedir)
 LIBRARY_PATH = -L$(shell pg_config --libdir)
 
-REGRESS = prelude basic io_varying_lengths random table invalid order parsing reported_bugs
+REGRESS = prelude basic io_varying_lengths random table invalid parsing reported_bugs
 REGRESS_OPTS = --inputdir=test
 
 PG_CONFIG = pg_config

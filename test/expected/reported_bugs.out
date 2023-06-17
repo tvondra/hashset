@@ -1,15 +1,18 @@
 /*
- * In the original implementation of the query, the hashset_add() and
- * hashset_merge() functions were modifying the original hashset in-place.
- * This issue was leading to unexpected results because the functions
- * were altering the original data in the hashset.
+ * Bug in hashset_add() and hashset_merge() functions altering original hashset.
  *
- * The problem was fixed by introducing a macro function
- * PG_GETARG_INT4HASHSET_COPY() in the C code. This function ensures that
- * a copy of the hashset is created and modified, leaving the original
- * hashset untouched. This fix resulted in the correct execution of the
- * query, with hashset_add() and hashset_merge() working on the copied
- * hashset, thereby preventing alteration of the original data.
+ * Previously, the hashset_add() and hashset_merge() functions were modifying the
+ * original hashset in-place, leading to unexpected results as the original data
+ * within the hashset was being altered.
+ *
+ * The issue was addressed by implementing a macro function named
+ * PG_GETARG_INT4HASHSET_COPY() within the C code. This function guarantees that
+ * a copy of the hashset is created and subsequently modified, thereby preserving
+ * the integrity of the original hashset.
+ *
+ * As a result of this fix, hashset_add() and hashset_merge() now operate on
+ * a copied hashset, ensuring that the original data remains unaltered, and
+ * the query executes correctly.
  */
 SELECT
     q.hashset_agg,
@@ -23,5 +26,43 @@ FROM
  hashset_agg | hashset_add 
 -------------+-------------
  {3,1,2}     | {3,4,1,2}
+(1 row)
+
+/*
+ * Bug in hashset_hash() function with respect to element insertion order.
+ *
+ * Prior to the fix, the hashset_hash() function was accumulating the hashes
+ * of individual elements in a non-commutative manner. As a consequence, the
+ * final hash value was sensitive to the order in which elements were inserted
+ * into the hashset. This behavior led to inconsistencies, as logically
+ * equivalent sets (i.e., sets with the same elements but in different orders)
+ * produced different hash values.
+ *
+ * The bug was fixed by modifying the hashset_hash() function to use a
+ * commutative operation when combining the hashes of individual elements.
+ * This change ensures that the final hash value is independent of the
+ * element insertion order, and logically equivalent sets produce the
+ * same hash.
+ */
+SELECT hashset_hash('{1,2}'::int4hashset);
+ hashset_hash 
+--------------
+   -840053840
+(1 row)
+
+SELECT hashset_hash('{2,1}'::int4hashset);
+ hashset_hash 
+--------------
+   -840053840
+(1 row)
+
+SELECT hashset_cmp('{1,2}','{2,1}')
+UNION
+SELECT hashset_cmp('{1,2}','{1,2,1}')
+UNION
+SELECT hashset_cmp('{1,2}','{1,2}');
+ hashset_cmp 
+-------------
+           0
 (1 row)
 

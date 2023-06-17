@@ -86,30 +86,20 @@ FROM
 
 /*
  * Hashset Btree Operators
+ *
+ * Ordering of hashsets is not based on lexicographic order of elements.
+ * - If two hashsets are not equal, they retain consistent relative order.
+ * - If two hashsets are equal but have elements in different orders, their
+ *   ordering is non-deterministic. This is inherent since the comparison
+ *   function must return 0 for equal hashsets, giving no indication of order.
  */
 
 SELECT h FROM
 (
-    SELECT '{2}'::int4hashset AS h
+    SELECT '{1,2,3}'::int4hashset AS h
     UNION ALL
-    SELECT '{1}'::int4hashset AS h
+    SELECT '{4,5,6}'::int4hashset AS h
     UNION ALL
-    SELECT '{3}'::int4hashset AS h
+    SELECT '{7,8,9}'::int4hashset AS h
 ) q
 ORDER BY h;
-
-SELECT '{2}'::int4hashset < '{1}'::int4hashset; -- false
-SELECT '{2}'::int4hashset < '{2}'::int4hashset; -- false
-SELECT '{2}'::int4hashset < '{3}'::int4hashset; -- true
-
-SELECT '{2}'::int4hashset <= '{1}'::int4hashset; -- false
-SELECT '{2}'::int4hashset <= '{2}'::int4hashset; -- true
-SELECT '{2}'::int4hashset <= '{3}'::int4hashset; -- true
-
-SELECT '{2}'::int4hashset > '{1}'::int4hashset; -- true
-SELECT '{2}'::int4hashset > '{2}'::int4hashset; -- false
-SELECT '{2}'::int4hashset > '{3}'::int4hashset; -- false
-
-SELECT '{2}'::int4hashset >= '{1}'::int4hashset; -- true
-SELECT '{2}'::int4hashset >= '{2}'::int4hashset; -- true
-SELECT '{2}'::int4hashset >= '{3}'::int4hashset; -- false
