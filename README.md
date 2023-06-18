@@ -80,6 +80,9 @@ a variable-length type.
 - `hashset_count(int4hashset) -> bigint`: Returns the number of elements in an int4hashset.
 - `hashset_capacity(int4hashset) -> bigint`: Returns the current capacity of an int4hashset.
 - `hashset_max_collisions(int4hashset) -> bigint`: Returns the maximum number of collisions that have occurred for a single element
+- `hashset_intersection(int4hashset, int4hashset) -> int4hashset`: Returns a new int4hashset that is the intersection of the two input sets.
+- `hashset_difference(int4hashset, int4hashset) -> int4hashset`: Returns a new int4hashset that contains the elements present in the first set but not in the second set.
+- `hashset_symmetric_difference(int4hashset, int4hashset) -> int4hashset`: Returns a new int4hashset containing elements that are in either of the input sets, but not in their intersection.
 
 ## Aggregation Functions
 
