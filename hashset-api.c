@@ -214,11 +214,15 @@ Datum
 int4hashset_send(PG_FUNCTION_ARGS)
 {
 	int4hashset_t  *set = PG_GETARG_INT4HASHSET(0);
-	StringInfoData buf;
-	int32 data_size;
+	StringInfoData	buf;
+	int32			data_size;
+	int				version = 1;
 
 	/* Begin constructing the message */
 	pq_begintypsend(&buf);
+
+	/* Send the version number */
+	pq_sendint8(&buf, version);
 
 	/* Send the non-data fields */
 	pq_sendint32(&buf, set->flags);
@@ -241,22 +245,36 @@ int4hashset_send(PG_FUNCTION_ARGS)
 Datum
 int4hashset_recv(PG_FUNCTION_ARGS)
 {
-	StringInfo	buf = (StringInfo) PG_GETARG_POINTER(0);
-	int4hashset_t	*set;
-	int32		data_size;
-	Size		total_size;
-	const char	*binary_data;
+	StringInfo		buf = (StringInfo) PG_GETARG_POINTER(0);
+	int4hashset_t  *set;
+	int32			data_size;
+	Size			total_size;
+	const char	   *binary_data;
+	int				version;
+	int32			flags;
+	int32			capacity;
+	int32			nelements;
+	int32			hashfn_id;
+	float4			load_factor;
+	float4			growth_factor;
+	int32			ncollisions;
+	int32			max_collisions;
+	int32			hash;
+
+	version = pq_getmsgint(buf, 1);
+	if (version != 1)
+		elog(ERROR, "unsupported hashset version number %d", version);
 
 	/* Read fields from buffer */
-	int32 flags = pq_getmsgint(buf, 4);
-	int32 capacity = pq_getmsgint(buf, 4);
-	int32 nelements = pq_getmsgint(buf, 4);
-	int32 hashfn_id = pq_getmsgint(buf, 4);
-	float4 load_factor = pq_getmsgfloat4(buf);
-	float4 growth_factor = pq_getmsgfloat4(buf);
-	int32 ncollisions = pq_getmsgint(buf, 4);
-	int32 max_collisions = pq_getmsgint(buf, 4);
-	int32 hash = pq_getmsgint(buf, 4);
+	flags = pq_getmsgint(buf, 4);
+	capacity = pq_getmsgint(buf, 4);
+	nelements = pq_getmsgint(buf, 4);
+	hashfn_id = pq_getmsgint(buf, 4);
+	load_factor = pq_getmsgfloat4(buf);
+	growth_factor = pq_getmsgfloat4(buf);
+	ncollisions = pq_getmsgint(buf, 4);
+	max_collisions = pq_getmsgint(buf, 4);
+	hash = pq_getmsgint(buf, 4);
 
 	/* Compute the size of the data field */
 	data_size = buf->len - buf->cursor;

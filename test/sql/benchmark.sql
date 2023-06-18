@@ -1,4 +1,4 @@
-DROP EXTENSION IF EXISTS hashset;
+DROP EXTENSION IF EXISTS hashset CASCADE;
 CREATE EXTENSION hashset;
 
 \timing on
@@ -9,6 +9,8 @@ DROP TABLE IF EXISTS benchmark_input_100k;
 DROP TABLE IF EXISTS benchmark_input_10M;
 DROP TABLE IF EXISTS benchmark_array_agg;
 DROP TABLE IF EXISTS benchmark_hashset_agg;
+
+SELECT setseed(0.12345);
 
 CREATE TABLE benchmark_input_100k AS
 SELECT

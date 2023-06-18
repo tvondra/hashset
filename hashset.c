@@ -138,10 +138,10 @@ int4hashset_add_element(int4hashset_t *set, int32 value)
 		byte = (position / 8);
 		bit = (position % 8);
 
-		/* the item is already used - maybe it's the same value? */
+		/* The item is already used - maybe it's the same value? */
 		if (bitmap[byte] & (0x01 << bit))
 		{
-			/* same value, we're done */
+			/* Same value, we're done */
 			if (values[position] == value)
 				break;
 
@@ -156,7 +156,7 @@ int4hashset_add_element(int4hashset_t *set, int32 value)
 			continue;
 		}
 
-		/* found an empty spot, before hitting the value first */
+		/* Found an empty spot, before hitting the value first */
 		bitmap[byte] |= (0x01 << bit);
 		values[position] = value;
 
@@ -179,7 +179,7 @@ int4hashset_contains_element(int4hashset_t *set, int32 value)
 	uint32	position;
 	char   *bitmap;
 	int32  *values;
-	int     num_probes = 0; /* Add a counter for the number of probes */
+	int     num_probes = 0; /* Counter for the number of probes */
 
 	if (set->hashfn_id == JENKINS_LOOKUP3_HASHFN_ID)
 	{
@@ -210,15 +210,15 @@ int4hashset_contains_element(int4hashset_t *set, int32 value)
 		byte = (position / 8);
 		bit = (position % 8);
 
-		/* found an empty slot, value is not there */
+		/* Found an empty slot, value is not there */
 		if ((bitmap[byte] & (0x01 << bit)) == 0)
 			return false;
 
-		/* is it the same value? */
+		/* Is it the same value? */
 		if (values[position] == value)
 			return true;
 
-		/* move to the next element */
+		/* Move to the next element */
 		position = (position + HASHSET_STEP) % set->capacity;
 
 		num_probes++; /* Increment the number of probes */
@@ -295,7 +295,7 @@ hashset_isspace(char ch)
 }
 
 /*
- * construct an SQL array from a simple C double array
+ * Construct an SQL array from a simple C double array
  */
 Datum
 int32_to_array(FunctionCallInfo fcinfo, int32 *d, int len)
@@ -305,7 +305,7 @@ int32_to_array(FunctionCallInfo fcinfo, int32 *d, int len)
 
 	for (i = 0; i < len; i++)
 	{
-		/* stash away this field */
+		/* Stash away this field */
 		astate = accumArrayResult(astate,
 								  Int32GetDatum(d[i]),
 								  false,
