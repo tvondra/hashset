@@ -54,12 +54,24 @@ int4hashset_t *
 int4hashset_resize(int4hashset_t * set)
 {
 	int				i;
-	int4hashset_t	*new;
-	char			*bitmap;
-	int32			*values;
+	int4hashset_t  *new;
+	char		   *bitmap;
+	int32		   *values;
+	int				new_capacity;
+
+	new_capacity = (int)(set->capacity * set->growth_factor);
+
+	/*
+	 * If growth factor is too small, new capacity might remain the same as
+	 * the old capacity. This can lead to an infinite loop in resizing.
+	 * To prevent this, we manually increment the capacity by 1 if new capacity
+	 * equals the old capacity.
+	 */
+	if (new_capacity == set->capacity)
+		new_capacity = set->capacity + 1;
 
 	new = int4hashset_allocate(
-		set->capacity * 2,
+		new_capacity,
 		set->load_factor,
 		set->growth_factor,
 		set->hashfn_id

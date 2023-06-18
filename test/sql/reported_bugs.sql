@@ -48,3 +48,23 @@ UNION
 SELECT hashset_cmp('{1,2}','{1,2,1}')
 UNION
 SELECT hashset_cmp('{1,2}','{1,2}');
+
+/*
+ * Bug in int4hashset_resize() not utilizing growth_factor.
+ *
+ * The previous implementation hard-coded a growth factor of 2, neglecting
+ * the struct's growth_factor field. This bug was addressed by properly
+ * using growth_factor for new capacity calculation, with an additional
+ * safety check to prevent possible infinite loops in resizing.
+ */
+SELECT hashset_capacity(hashset_add(hashset_add(int4hashset(
+    capacity := 0,
+    load_factor := 0.75,
+    growth_factor := 1.1
+), 123), 456));
+
+SELECT hashset_capacity(hashset_add(hashset_add(int4hashset(
+    capacity := 0,
+    load_factor := 0.75,
+    growth_factor := 10
+), 123), 456));
