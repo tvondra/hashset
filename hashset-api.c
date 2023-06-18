@@ -23,6 +23,7 @@ PG_FUNCTION_INFO_V1(int4hashset_merge);
 PG_FUNCTION_INFO_V1(int4hashset_init);
 PG_FUNCTION_INFO_V1(int4hashset_capacity);
 PG_FUNCTION_INFO_V1(int4hashset_collisions);
+PG_FUNCTION_INFO_V1(int4hashset_max_collisions);
 PG_FUNCTION_INFO_V1(int4hashset_agg_add);
 PG_FUNCTION_INFO_V1(int4hashset_agg_add_set);
 PG_FUNCTION_INFO_V1(int4hashset_agg_final);
@@ -48,6 +49,7 @@ Datum int4hashset_merge(PG_FUNCTION_ARGS);
 Datum int4hashset_init(PG_FUNCTION_ARGS);
 Datum int4hashset_capacity(PG_FUNCTION_ARGS);
 Datum int4hashset_collisions(PG_FUNCTION_ARGS);
+Datum int4hashset_max_collisions(PG_FUNCTION_ARGS);
 Datum int4hashset_agg_add(PG_FUNCTION_ARGS);
 Datum int4hashset_agg_add_set(PG_FUNCTION_ARGS);
 Datum int4hashset_agg_final(PG_FUNCTION_ARGS);
@@ -169,7 +171,7 @@ int4hashset_in(PG_FUNCTION_ARGS)
 Datum
 int4hashset_out(PG_FUNCTION_ARGS)
 {
-	int4hashset_t *set = (int4hashset_t *) PG_GETARG_INT4HASHSET(0);
+	int4hashset_t *set = PG_GETARG_INT4HASHSET(0);
 	char *bitmap;
 	int32 *values;
 	int i;
@@ -208,11 +210,10 @@ int4hashset_out(PG_FUNCTION_ARGS)
 	PG_RETURN_CSTRING(str.data);
 }
 
-
 Datum
 int4hashset_send(PG_FUNCTION_ARGS)
 {
-	int4hashset_t  *set = (int4hashset_t *) PG_GETARG_INT4HASHSET(0);
+	int4hashset_t  *set = PG_GETARG_INT4HASHSET(0);
 	StringInfoData buf;
 	int32 data_size;
 
@@ -224,6 +225,11 @@ int4hashset_send(PG_FUNCTION_ARGS)
 	pq_sendint32(&buf, set->capacity);
 	pq_sendint32(&buf, set->nelements);
 	pq_sendint32(&buf, set->hashfn_id);
+	pq_sendfloat4(&buf, set->load_factor);
+	pq_sendfloat4(&buf, set->growth_factor);
+	pq_sendint32(&buf, set->ncollisions);
+	pq_sendint32(&buf, set->max_collisions);
+	pq_sendint32(&buf, set->hash);
 
 	/* Compute and send the size of the data field */
 	data_size = VARSIZE(set) - offsetof(int4hashset_t, data);
@@ -231,7 +237,6 @@ int4hashset_send(PG_FUNCTION_ARGS)
 
 	PG_RETURN_BYTEA_P(pq_endtypsend(&buf));
 }
-
 
 Datum
 int4hashset_recv(PG_FUNCTION_ARGS)
@@ -247,12 +252,20 @@ int4hashset_recv(PG_FUNCTION_ARGS)
 	int32 capacity = pq_getmsgint(buf, 4);
 	int32 nelements = pq_getmsgint(buf, 4);
 	int32 hashfn_id = pq_getmsgint(buf, 4);
+	float4 load_factor = pq_getmsgfloat4(buf);
+	float4 growth_factor = pq_getmsgfloat4(buf);
+	int32 ncollisions = pq_getmsgint(buf, 4);
+	int32 max_collisions = pq_getmsgint(buf, 4);
+	int32 hash = pq_getmsgint(buf, 4);
 
 	/* Compute the size of the data field */
 	data_size = buf->len - buf->cursor;
 
 	/* Read the binary data */
 	binary_data = pq_getmsgbytes(buf, data_size);
+
+	/* Make sure that there is no extra data left in the message */
+	pq_getmsgend(buf);
 
 	/* Compute total size of hashset_t */
 	total_size = offsetof(int4hashset_t, data) + data_size;
@@ -268,6 +281,11 @@ int4hashset_recv(PG_FUNCTION_ARGS)
 	set->capacity = capacity;
 	set->nelements = nelements;
 	set->hashfn_id = hashfn_id;
+	set->load_factor = load_factor;
+	set->growth_factor = growth_factor;
+	set->ncollisions = ncollisions;
+	set->max_collisions = max_collisions;
+	set->hash = hash;
 	memcpy(set->data, binary_data, data_size);
 
 	PG_RETURN_POINTER(set);
@@ -429,7 +447,7 @@ int4hashset_capacity(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(0))
 		PG_RETURN_NULL();
 
-	set = (int4hashset_t *) PG_GETARG_POINTER(0);
+	set = PG_GETARG_INT4HASHSET(0);
 
 	PG_RETURN_INT64(set->capacity);
 }
@@ -445,6 +463,19 @@ int4hashset_collisions(PG_FUNCTION_ARGS)
 	set = PG_GETARG_INT4HASHSET(0);
 
 	PG_RETURN_INT64(set->ncollisions);
+}
+
+Datum
+int4hashset_max_collisions(PG_FUNCTION_ARGS)
+{
+	int4hashset_t	*set;
+
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+
+	set = PG_GETARG_INT4HASHSET(0);
+
+	PG_RETURN_INT64(set->max_collisions);
 }
 
 Datum
@@ -646,7 +677,7 @@ int4hashset_to_array(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(0))
 		PG_RETURN_NULL();
 
-	set = (int4hashset_t *) PG_GETARG_INT4HASHSET(0);
+	set = PG_GETARG_INT4HASHSET(0);
 
 	sbitmap = set->data;
 	svalues = (int32 *) (set->data + CEIL_DIV(set->capacity, 8));

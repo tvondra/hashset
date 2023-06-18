@@ -68,3 +68,18 @@ SELECT hashset_capacity(hashset_add(hashset_add(int4hashset(
     load_factor := 0.75,
     growth_factor := 10
 ), 123), 456));
+
+/*
+ * Bug in int4hashset_capacity() not detoasting input correctly.
+ */
+SELECT hashset_capacity(int4hashset(capacity:=10)) AS capacity_10;
+SELECT hashset_capacity(int4hashset(capacity:=1000)) AS capacity_1000;
+SELECT hashset_capacity(int4hashset(capacity:=100000)) AS capacity_100000;
+
+CREATE TABLE test_capacity_10 AS SELECT int4hashset(capacity:=10) AS capacity_10;
+CREATE TABLE test_capacity_1000 AS SELECT int4hashset(capacity:=1000) AS capacity_1000;
+CREATE TABLE test_capacity_100000 AS SELECT int4hashset(capacity:=100000) AS capacity_100000;
+
+SELECT hashset_capacity(capacity_10) AS capacity_10 FROM test_capacity_10;
+SELECT hashset_capacity(capacity_1000) AS capacity_1000 FROM test_capacity_1000;
+SELECT hashset_capacity(capacity_100000) AS capacity_100000 FROM test_capacity_100000;

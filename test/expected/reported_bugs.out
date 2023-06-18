@@ -94,3 +94,45 @@ SELECT hashset_capacity(hashset_add(hashset_add(int4hashset(
                10
 (1 row)
 
+/*
+ * Bug in int4hashset_capacity() not detoasting input correctly.
+ */
+SELECT hashset_capacity(int4hashset(capacity:=10)) AS capacity_10;
+ capacity_10 
+-------------
+          10
+(1 row)
+
+SELECT hashset_capacity(int4hashset(capacity:=1000)) AS capacity_1000;
+ capacity_1000 
+---------------
+          1000
+(1 row)
+
+SELECT hashset_capacity(int4hashset(capacity:=100000)) AS capacity_100000;
+ capacity_100000 
+-----------------
+          100000
+(1 row)
+
+CREATE TABLE test_capacity_10 AS SELECT int4hashset(capacity:=10) AS capacity_10;
+CREATE TABLE test_capacity_1000 AS SELECT int4hashset(capacity:=1000) AS capacity_1000;
+CREATE TABLE test_capacity_100000 AS SELECT int4hashset(capacity:=100000) AS capacity_100000;
+SELECT hashset_capacity(capacity_10) AS capacity_10 FROM test_capacity_10;
+ capacity_10 
+-------------
+          10
+(1 row)
+
+SELECT hashset_capacity(capacity_1000) AS capacity_1000 FROM test_capacity_1000;
+ capacity_1000 
+---------------
+          1000
+(1 row)
+
+SELECT hashset_capacity(capacity_100000) AS capacity_100000 FROM test_capacity_100000;
+ capacity_100000 
+-----------------
+          100000
+(1 row)
+

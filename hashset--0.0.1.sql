@@ -82,6 +82,11 @@ RETURNS bigint
 AS 'hashset', 'int4hashset_collisions'
 LANGUAGE C IMMUTABLE;
 
+CREATE OR REPLACE FUNCTION hashset_max_collisions(int4hashset)
+RETURNS bigint
+AS 'hashset', 'int4hashset_max_collisions'
+LANGUAGE C IMMUTABLE;
+
 CREATE OR REPLACE FUNCTION int4_add_int4hashset(int4, int4hashset)
 RETURNS int4hashset
 AS $$SELECT $2 || $1$$

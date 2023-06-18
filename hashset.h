@@ -34,6 +34,7 @@ typedef struct int4hashset_t {
 	float4		load_factor;	/* Load factor before triggering resize */
 	float4		growth_factor;	/* Growth factor when resizing the hashset */
 	int32		ncollisions;	/* Number of collisions */
+	int32		max_collisions;	/* Maximum collisions for a single element */
 	int32		hash;			/* Stored hash value of the hashset */
 	char		data[FLEXIBLE_ARRAY_MEMBER];
 } int4hashset_t;

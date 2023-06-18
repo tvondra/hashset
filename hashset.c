@@ -43,6 +43,8 @@ int4hashset_allocate(
 	set->hashfn_id = hashfn_id;
 	set->load_factor = load_factor;
 	set->growth_factor = growth_factor;
+	set->ncollisions = 0;
+	set->max_collisions = 0;
 	set->hash = 0; /* Initial hash value */
 
 	set->flags |= 0;
@@ -102,6 +104,7 @@ int4hashset_add_element(int4hashset_t *set, int32 value)
 	uint32	position;
 	char   *bitmap;
 	int32  *values;
+	int32	current_collisions = 0;
 
 	if (set->nelements > set->capacity * set->load_factor)
 		set = int4hashset_resize(set);
@@ -144,6 +147,10 @@ int4hashset_add_element(int4hashset_t *set, int32 value)
 
 			/* Increment the collision counter */
 			set->ncollisions++;
+			current_collisions++;
+
+			if (current_collisions > set->max_collisions)
+				set->max_collisions = current_collisions;
 
 			position = (position + HASHSET_STEP) % set->capacity;
 			continue;
