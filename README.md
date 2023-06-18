@@ -79,6 +79,7 @@ a variable-length type.
 - `hashset_to_array(int4hashset) -> int[]`: Converts an int4hashset to an array of integers.
 - `hashset_count(int4hashset) -> bigint`: Returns the number of elements in an int4hashset.
 - `hashset_capacity(int4hashset) -> bigint`: Returns the current capacity of an int4hashset.
+- `hashset_max_collisions(int4hashset) -> bigint`: Returns the maximum number of collisions that have occurred for a single element
 
 ## Aggregation Functions
 
