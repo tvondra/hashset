@@ -28,6 +28,9 @@ SELECT hashset_merge('{1,2}'::int4hashset, '{2,3}'::int4hashset);
 SELECT hashset_to_array('{1,2,3}'::int4hashset);
 SELECT hashset_count('{1,2,3}'::int4hashset); -- 3
 SELECT hashset_capacity(int4hashset(capacity := 10)); -- 10
+SELECT hashset_intersection('{1,2}'::int4hashset,'{2,3}'::int4hashset);
+SELECT hashset_difference('{1,2}'::int4hashset,'{2,3}'::int4hashset);
+SELECT hashset_symmetric_difference('{1,2}'::int4hashset,'{2,3}'::int4hashset);
 
 /*
  * Aggregation Functions

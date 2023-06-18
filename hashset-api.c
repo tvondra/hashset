@@ -37,6 +37,9 @@ PG_FUNCTION_INFO_V1(int4hashset_le);
 PG_FUNCTION_INFO_V1(int4hashset_gt);
 PG_FUNCTION_INFO_V1(int4hashset_ge);
 PG_FUNCTION_INFO_V1(int4hashset_cmp);
+PG_FUNCTION_INFO_V1(int4hashset_intersection);
+PG_FUNCTION_INFO_V1(int4hashset_difference);
+PG_FUNCTION_INFO_V1(int4hashset_symmetric_difference);
 
 Datum int4hashset_in(PG_FUNCTION_ARGS);
 Datum int4hashset_out(PG_FUNCTION_ARGS);
@@ -63,6 +66,9 @@ Datum int4hashset_le(PG_FUNCTION_ARGS);
 Datum int4hashset_gt(PG_FUNCTION_ARGS);
 Datum int4hashset_ge(PG_FUNCTION_ARGS);
 Datum int4hashset_cmp(PG_FUNCTION_ARGS);
+Datum int4hashset_intersection(PG_FUNCTION_ARGS);
+Datum int4hashset_difference(PG_FUNCTION_ARGS);
+Datum int4hashset_symmetric_difference(PG_FUNCTION_ARGS);
 
 Datum
 int4hashset_in(PG_FUNCTION_ARGS)
@@ -902,4 +908,150 @@ int4hashset_cmp(PG_FUNCTION_ARGS)
 	pfree(elements_a);
 	pfree(elements_b);
 	PG_RETURN_INT32(0);
+}
+
+Datum
+int4hashset_intersection(PG_FUNCTION_ARGS)
+{
+	int				i;
+	int4hashset_t  *seta;
+	int4hashset_t  *setb;
+	int4hashset_t  *intersection;
+	char		   *bitmap;
+	int32_t		   *values;
+
+	if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
+		PG_RETURN_NULL();
+
+	seta = PG_GETARG_INT4HASHSET(0);
+	setb = PG_GETARG_INT4HASHSET(1);
+
+	intersection = int4hashset_allocate(
+		seta->capacity,
+		DEFAULT_LOAD_FACTOR,
+		DEFAULT_GROWTH_FACTOR,
+		DEFAULT_HASHFN_ID
+	);
+
+	bitmap = setb->data;
+	values = (int32_t *)(setb->data + CEIL_DIV(setb->capacity, 8));
+
+	for (i = 0; i < setb->capacity; i++)
+	{
+		int byte = (i / 8);
+		int bit = (i % 8);
+
+		if ((bitmap[byte] & (0x01 << bit)) &&
+			int4hashset_contains_element(seta, values[i]))
+		{
+			intersection = int4hashset_add_element(intersection, values[i]);
+		}
+	}
+
+	PG_RETURN_POINTER(intersection);
+}
+
+Datum
+int4hashset_difference(PG_FUNCTION_ARGS)
+{
+	int				i;
+	int4hashset_t	*seta;
+	int4hashset_t	*setb;
+	int4hashset_t	*difference;
+	char			*bitmap;
+	int32_t			*values;
+
+	if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
+		PG_RETURN_NULL();
+
+	seta = PG_GETARG_INT4HASHSET(0);
+	setb = PG_GETARG_INT4HASHSET(1);
+
+	difference = int4hashset_allocate(
+		seta->capacity,
+		DEFAULT_LOAD_FACTOR,
+		DEFAULT_GROWTH_FACTOR,
+		DEFAULT_HASHFN_ID
+	);
+
+	bitmap = seta->data;
+	values = (int32_t *)(seta->data + CEIL_DIV(seta->capacity, 8));
+
+	for (i = 0; i < seta->capacity; i++)
+	{
+		int byte = (i / 8);
+		int bit = (i % 8);
+
+		if ((bitmap[byte] & (0x01 << bit)) &&
+			!int4hashset_contains_element(setb, values[i]))
+		{
+			difference = int4hashset_add_element(difference, values[i]);
+		}
+	}
+
+	PG_RETURN_POINTER(difference);
+}
+
+Datum
+int4hashset_symmetric_difference(PG_FUNCTION_ARGS)
+{
+	int				i;
+	int4hashset_t  *seta;
+	int4hashset_t  *setb;
+	int4hashset_t  *result;
+	char		   *bitmapa;
+	char		   *bitmapb;
+	int32_t		   *valuesa;
+	int32_t		   *valuesb;
+
+	if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
+		ereport(ERROR,
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				 errmsg("hashset arguments cannot be null")));
+
+	seta = PG_GETARG_INT4HASHSET(0);
+	setb = PG_GETARG_INT4HASHSET(1);
+
+	bitmapa = seta->data;
+	valuesa = (int32 *) (seta->data + CEIL_DIV(seta->capacity, 8));
+
+	bitmapb = setb->data;
+	valuesb = (int32 *) (setb->data + CEIL_DIV(setb->capacity, 8));
+
+	result = int4hashset_allocate(
+		seta->nelements + setb->nelements,
+		DEFAULT_LOAD_FACTOR,
+		DEFAULT_GROWTH_FACTOR,
+		DEFAULT_HASHFN_ID
+	);
+
+	/* Add elements that are in seta but not in setb */
+	for (i = 0; i < seta->capacity; i++)
+	{
+		int byte = i / 8;
+		int bit = i % 8;
+
+		if (bitmapa[byte] & (0x01 << bit))
+		{
+			int32 value = valuesa[i];
+			if (!int4hashset_contains_element(setb, value))
+				result = int4hashset_add_element(result, value);
+		}
+	}
+
+	/* Add elements that are in setb but not in seta */
+	for (i = 0; i < setb->capacity; i++)
+	{
+		int byte = i / 8;
+		int bit = i % 8;
+
+		if (bitmapb[byte] & (0x01 << bit))
+		{
+			int32 value = valuesb[i];
+			if (!int4hashset_contains_element(seta, value))
+				result = int4hashset_add_element(result, value);
+		}
+	}
+
+	PG_RETURN_POINTER(result);
 }

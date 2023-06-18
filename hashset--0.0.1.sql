@@ -93,6 +93,21 @@ AS $$SELECT $2 || $1$$
 LANGUAGE SQL
 IMMUTABLE PARALLEL SAFE STRICT COST 1;
 
+CREATE OR REPLACE FUNCTION hashset_intersection(int4hashset, int4hashset)
+RETURNS int4hashset
+AS 'hashset', 'int4hashset_intersection'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION hashset_difference(int4hashset, int4hashset)
+RETURNS int4hashset
+AS 'hashset', 'int4hashset_difference'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION hashset_symmetric_difference(int4hashset, int4hashset)
+RETURNS int4hashset
+AS 'hashset', 'int4hashset_symmetric_difference'
+LANGUAGE C IMMUTABLE;
+
 /*
  * Aggregation Functions
  */
