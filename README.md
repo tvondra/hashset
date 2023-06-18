@@ -64,12 +64,13 @@ a variable-length type.
 
 ## Functions
 
-- `int4hashset([capacity int, load_factor float4, growth_factor float4, hashfn_id int4]) -> int4hashset`:
+- `int4hashset([capacity int, load_factor float4, growth_factor float4, hashfn1_id int4, hashfn2_id int4]) -> int4hashset`:
   Initialize an empty int4hashset with optional parameters.
     - `capacity` specifies the initial capacity, which is zero by default.
     - `load_factor` represents the threshold for resizing the hashset and defaults to 0.75.
     - `growth_factor` is the multiplier for resizing and defaults to 2.0.
-    - `hashfn_id` represents the hash function used.
+    - `hashfn1_id` represents the first hash function used.
+    - `hashfn2_id` represents the second hash function used.
         - 1=Jenkins/lookup3 (default)
         - 2=MurmurHash32
         - 3=Naive hash function

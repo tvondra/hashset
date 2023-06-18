@@ -1,4 +1,4 @@
-DROP EXTENSION IF EXISTS hashset;
+DROP EXTENSION IF EXISTS hashset CASCADE;
 CREATE EXTENSION hashset;
 
 \timing on
@@ -10,6 +10,7 @@ DROP TABLE IF EXISTS benchmark_input_10M;
 DROP TABLE IF EXISTS benchmark_array_agg;
 DROP TABLE IF EXISTS benchmark_hashset_agg;
 
+SELECT setseed(0.12345);
 CREATE TABLE benchmark_input_100k AS
 SELECT
     i,
@@ -82,7 +83,7 @@ $$
 DECLARE
     h int4hashset;
 BEGIN
-    h := int4hashset(hashfn_id := 1);
+    h := int4hashset(hashfn1_id := 1);
     FOR i IN 1..100000 LOOP
         h := hashset_add(h, i);
     END LOOP;
@@ -100,7 +101,7 @@ $$
 DECLARE
     h int4hashset;
 BEGIN
-    h := int4hashset(hashfn_id := 2);
+    h := int4hashset(hashfn1_id := 2);
     FOR i IN 1..100000 LOOP
         h := hashset_add(h, i);
     END LOOP;
@@ -118,7 +119,7 @@ $$
 DECLARE
     h int4hashset;
 BEGIN
-    h := int4hashset(hashfn_id := 3);
+    h := int4hashset(hashfn1_id := 3);
     FOR i IN 1..100000 LOOP
         h := hashset_add(h, i);
     END LOOP;
@@ -139,7 +140,7 @@ $$
 DECLARE
     h int4hashset;
 BEGIN
-    h := int4hashset(hashfn_id := 1);
+    h := int4hashset(hashfn1_id := 1);
     FOR i IN 1..100000 LOOP
         h := hashset_add(h, (floor(4294967296 * random()) - 2147483648)::int);
     END LOOP;
@@ -158,7 +159,7 @@ $$
 DECLARE
     h int4hashset;
 BEGIN
-    h := int4hashset(hashfn_id := 2);
+    h := int4hashset(hashfn1_id := 2);
     FOR i IN 1..100000 LOOP
         h := hashset_add(h, (floor(4294967296 * random()) - 2147483648)::int);
     END LOOP;
@@ -177,7 +178,7 @@ $$
 DECLARE
     h int4hashset;
 BEGIN
-    h := int4hashset(hashfn_id := 3);
+    h := int4hashset(hashfn1_id := 3);
     FOR i IN 1..100000 LOOP
         h := hashset_add(h, (floor(4294967296 * random()) - 2147483648)::int);
     END LOOP;

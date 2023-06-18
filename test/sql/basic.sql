@@ -17,7 +17,8 @@ SELECT int4hashset(
     capacity := 10,
     load_factor := 0.9,
     growth_factor := 1.1,
-    hashfn_id := 1
+    hashfn1_id := 1,
+    hashfn2_id := 2
 );
 SELECT hashset_add(int4hashset(), 123);
 SELECT hashset_add(NULL::int4hashset, 123);

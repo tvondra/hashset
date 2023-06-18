@@ -13,20 +13,13 @@ int4hashset_allocate(
 	int capacity,
 	float4 load_factor,
 	float4 growth_factor,
-	int hashfn_id
+	int hashfn1_id,
+	int hashfn2_id
 )
 {
 	Size			len;
 	int4hashset_t  *set;
 	char		   *ptr;
-
-	/*
-	 * Ensure that capacity is not divisible by HASHSET_STEP;
-	 * i.e. the step size used in hashset_add_element()
-	 * and hashset_contains_element().
-	 */
-	while (capacity % HASHSET_STEP == 0)
-		capacity++;
 
 	len = offsetof(int4hashset_t, data);
 	len += CEIL_DIV(capacity, 8);
@@ -40,7 +33,8 @@ int4hashset_allocate(
 	set->flags = 0;
 	set->capacity = capacity;
 	set->nelements = 0;
-	set->hashfn_id = hashfn_id;
+	set->hashfn1_id = hashfn1_id;
+	set->hashfn2_id = hashfn2_id;
 	set->load_factor = load_factor;
 	set->growth_factor = growth_factor;
 	set->ncollisions = 0;
@@ -76,7 +70,8 @@ int4hashset_resize(int4hashset_t * set)
 		new_capacity,
 		set->load_factor,
 		set->growth_factor,
-		set->hashfn_id
+		set->hashfn1_id,
+		set->hashfn2_id
 	);
 
 	/* Calculate the pointer to the bitmap and values array */
@@ -100,35 +95,39 @@ int4hashset_add_element(int4hashset_t *set, int32 value)
 {
 	int		byte;
 	int		bit;
-	uint32	hash;
+	uint32	hash1;
+	uint32	hash2;
 	uint32	position;
 	char   *bitmap;
 	int32  *values;
-	int32	current_collisions = 0;
+	int		i = 0; /* Counter for the number of probes */
 
-	if (set->nelements > set->capacity * set->load_factor)
+	if ((set->nelements + 1) > set->capacity * set->load_factor)
 		set = int4hashset_resize(set);
 
-	if (set->hashfn_id == JENKINS_LOOKUP3_HASHFN_ID)
-	{
-		hash = hash_bytes_uint32((uint32) value);
-	}
-	else if (set->hashfn_id == MURMURHASH32_HASHFN_ID)
-	{
-		hash = murmurhash32((uint32) value);
-	}
-	else if (set->hashfn_id == NAIVE_HASHFN_ID)
-	{
-		hash = ((uint32) value * 7691 + 4201);
-	}
+	if (set->hashfn1_id == JENKINS_LOOKUP3_HASHFN_ID)
+		hash1 = hash_bytes_uint32((uint32) value);
+	else if (set->hashfn1_id == MURMURHASH32_HASHFN_ID)
+		hash1 = murmurhash32((uint32) value);
+	else if (set->hashfn1_id == NAIVE_HASHFN_ID)
+		hash1 = ((uint32) value * NAIVE_HASHFN_MULTIPLIER + NAIVE_HASHFN_INCREMENT);
 	else
-	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("invalid hash function ID: \"%d\"", set->hashfn_id)));
-	}
+				errmsg("invalid hash function ID: \"%d\"", set->hashfn1_id)));
 
-    position = hash % set->capacity;
+	if (set->hashfn2_id == JENKINS_LOOKUP3_HASHFN_ID)
+		hash2 = hash_bytes_uint32((uint32) value);
+	else if (set->hashfn2_id == MURMURHASH32_HASHFN_ID)
+		hash2 = murmurhash32((uint32) value);
+	else if (set->hashfn2_id == NAIVE_HASHFN_ID)
+		hash2 = ((uint32) value * NAIVE_HASHFN_MULTIPLIER + NAIVE_HASHFN_INCREMENT);
+	else
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("invalid hash function ID: \"%d\"", set->hashfn2_id)));
+
+	position = (hash1 + i*hash2 + (i*i*i - i)/6) % set->capacity;
 
 	bitmap = set->data;
 	values = (int32 *) (set->data + CEIL_DIV(set->capacity, 8));
@@ -138,29 +137,28 @@ int4hashset_add_element(int4hashset_t *set, int32 value)
 		byte = (position / 8);
 		bit = (position % 8);
 
-		/* the item is already used - maybe it's the same value? */
+		/* The item is already used - maybe it's the same value? */
 		if (bitmap[byte] & (0x01 << bit))
 		{
-			/* same value, we're done */
+			/* Same value, we're done */
 			if (values[position] == value)
 				break;
 
-			/* Increment the collision counter */
+			/* Increment for the next probe */
 			set->ncollisions++;
-			current_collisions++;
+			i++;
+			if (i > set->max_collisions)
+				set->max_collisions = i;
 
-			if (current_collisions > set->max_collisions)
-				set->max_collisions = current_collisions;
-
-			position = (position + HASHSET_STEP) % set->capacity;
+			position = (hash1 + i*hash2 + (i*i*i - i)/6) % set->capacity;
 			continue;
 		}
 
-		/* found an empty spot, before hitting the value first */
+		/* Found an empty spot, before hitting the value first */
 		bitmap[byte] |= (0x01 << bit);
 		values[position] = value;
 
-		set->hash ^= hash;
+		set->hash ^= hash1 ^ hash2;
 
 		set->nelements++;
 
@@ -175,32 +173,36 @@ int4hashset_contains_element(int4hashset_t *set, int32 value)
 {
 	int     byte;
 	int     bit;
-	uint32  hash;
+	uint32  hash1;
+	uint32  hash2;
 	uint32	position;
 	char   *bitmap;
 	int32  *values;
-	int     num_probes = 0; /* Add a counter for the number of probes */
+	int     i = 0; /* Counter for the number of probes */
 
-	if (set->hashfn_id == JENKINS_LOOKUP3_HASHFN_ID)
-	{
-		hash = hash_bytes_uint32((uint32) value);
-	}
-	else if (set->hashfn_id == MURMURHASH32_HASHFN_ID)
-	{
-		hash = murmurhash32((uint32) value);
-	}
-	else if (set->hashfn_id == NAIVE_HASHFN_ID)
-	{
-		hash = ((uint32) value * NAIVE_HASHFN_MULTIPLIER + NAIVE_HASHFN_INCREMENT);
-	}
+	if (set->hashfn1_id == JENKINS_LOOKUP3_HASHFN_ID)
+		hash1 = hash_bytes_uint32((uint32) value);
+	else if (set->hashfn1_id == MURMURHASH32_HASHFN_ID)
+		hash1 = murmurhash32((uint32) value);
+	else if (set->hashfn1_id == NAIVE_HASHFN_ID)
+		hash1 = ((uint32) value * NAIVE_HASHFN_MULTIPLIER + NAIVE_HASHFN_INCREMENT);
 	else
-	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("invalid hash function ID: \"%d\"", set->hashfn_id)));
-	}
+				errmsg("invalid hash function ID: \"%d\"", set->hashfn1_id)));
 
-	position = hash % set->capacity;
+	if (set->hashfn2_id == JENKINS_LOOKUP3_HASHFN_ID)
+		hash2 = hash_bytes_uint32((uint32) value);
+	else if (set->hashfn2_id == MURMURHASH32_HASHFN_ID)
+		hash2 = murmurhash32((uint32) value);
+	else if (set->hashfn2_id == NAIVE_HASHFN_ID)
+		hash2 = ((uint32) value * NAIVE_HASHFN_MULTIPLIER + NAIVE_HASHFN_INCREMENT);
+	else
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("invalid hash function ID: \"%d\"", set->hashfn2_id)));
+
+	position = (hash1 + i*hash2 + (i*i*i - i)/6) % set->capacity;
 
 	bitmap = set->data;
 	values = (int32 *) (set->data + CEIL_DIV(set->capacity, 8));
@@ -210,21 +212,20 @@ int4hashset_contains_element(int4hashset_t *set, int32 value)
 		byte = (position / 8);
 		bit = (position % 8);
 
-		/* found an empty slot, value is not there */
+		/* Found an empty slot, value is not there */
 		if ((bitmap[byte] & (0x01 << bit)) == 0)
 			return false;
 
-		/* is it the same value? */
+		/* Is it the same value? */
 		if (values[position] == value)
 			return true;
 
-		/* move to the next element */
-		position = (position + HASHSET_STEP) % set->capacity;
-
-		num_probes++; /* Increment the number of probes */
+		/* Move to the next element */
+		i++; /* Increment for the next probe */
+		position = (hash1 + i*hash2 + (i*i*i - i)/6) % set->capacity;
 
 		/* Check if we have probed all slots */
-		if (num_probes >= set->capacity)
+		if (i >= set->capacity)
 			return false; /* Avoid infinite loop */
 	}
 }

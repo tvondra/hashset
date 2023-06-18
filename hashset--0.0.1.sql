@@ -41,7 +41,8 @@ CREATE OR REPLACE FUNCTION int4hashset(
     capacity int DEFAULT 0,
     load_factor float4 DEFAULT 0.75,
     growth_factor float4 DEFAULT 2.0,
-    hashfn_id int DEFAULT 1
+    hashfn1_id int DEFAULT 1,
+    hashfn2_id int DEFAULT 2
 )
 RETURNS int4hashset
 AS 'hashset', 'int4hashset_init'

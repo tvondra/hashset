@@ -25,14 +25,16 @@
 #define DEFAULT_INITIAL_CAPACITY 0
 #define DEFAULT_LOAD_FACTOR 0.75
 #define DEFAULT_GROWTH_FACTOR 2.0
-#define DEFAULT_HASHFN_ID JENKINS_LOOKUP3_HASHFN_ID
+#define DEFAULT_HASHFN1_ID JENKINS_LOOKUP3_HASHFN_ID
+#define DEFAULT_HASHFN2_ID MURMURHASH32_HASHFN_ID
 
 typedef struct int4hashset_t {
 	int32		vl_len_;		/* varlena header (do not touch directly!) */
 	int32		flags;			/* reserved for future use (versioning, ...) */
 	int32		capacity;		/* max number of element we have space for */
 	int32		nelements;		/* number of items added to the hashset */
-	int32		hashfn_id;		/* ID of the hash function used */
+	int32		hashfn1_id;		/* ID of the first hash function used */
+	int32		hashfn2_id;		/* ID of the second hash function used */
 	float4		load_factor;	/* Load factor before triggering resize */
 	float4		growth_factor;	/* Growth factor when resizing the hashset */
 	int32		ncollisions;	/* Number of collisions */
@@ -41,7 +43,7 @@ typedef struct int4hashset_t {
 	char		data[FLEXIBLE_ARRAY_MEMBER];
 } int4hashset_t;
 
-int4hashset_t *int4hashset_allocate(int capacity, float4 load_factor, float4 growth_factor, int hashfn_id);
+int4hashset_t *int4hashset_allocate(int capacity, float4 load_factor, float4 growth_factor, int hashfn1_id, int hashfn2_id);
 int4hashset_t *int4hashset_resize(int4hashset_t * set);
 int4hashset_t *int4hashset_add_element(int4hashset_t *set, int32 value);
 bool int4hashset_contains_element(int4hashset_t *set, int32 value);

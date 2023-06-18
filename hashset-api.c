@@ -93,7 +93,8 @@ int4hashset_in(PG_FUNCTION_ARGS)
 		len/2,
 		DEFAULT_LOAD_FACTOR,
 		DEFAULT_GROWTH_FACTOR,
-		DEFAULT_HASHFN_ID
+		DEFAULT_HASHFN1_ID,
+		DEFAULT_HASHFN2_ID
 	);
 
 	while (true)
@@ -224,7 +225,8 @@ int4hashset_send(PG_FUNCTION_ARGS)
 	pq_sendint32(&buf, set->flags);
 	pq_sendint32(&buf, set->capacity);
 	pq_sendint32(&buf, set->nelements);
-	pq_sendint32(&buf, set->hashfn_id);
+	pq_sendint32(&buf, set->hashfn1_id);
+	pq_sendint32(&buf, set->hashfn2_id);
 	pq_sendfloat4(&buf, set->load_factor);
 	pq_sendfloat4(&buf, set->growth_factor);
 	pq_sendint32(&buf, set->ncollisions);
@@ -251,7 +253,8 @@ int4hashset_recv(PG_FUNCTION_ARGS)
 	int32 flags = pq_getmsgint(buf, 4);
 	int32 capacity = pq_getmsgint(buf, 4);
 	int32 nelements = pq_getmsgint(buf, 4);
-	int32 hashfn_id = pq_getmsgint(buf, 4);
+	int32 hashfn1_id = pq_getmsgint(buf, 4);
+	int32 hashfn2_id = pq_getmsgint(buf, 4);
 	float4 load_factor = pq_getmsgfloat4(buf);
 	float4 growth_factor = pq_getmsgfloat4(buf);
 	int32 ncollisions = pq_getmsgint(buf, 4);
@@ -280,7 +283,8 @@ int4hashset_recv(PG_FUNCTION_ARGS)
 	set->flags = flags;
 	set->capacity = capacity;
 	set->nelements = nelements;
-	set->hashfn_id = hashfn_id;
+	set->hashfn1_id = hashfn1_id;
+	set->hashfn2_id = hashfn2_id;
 	set->load_factor = load_factor;
 	set->growth_factor = growth_factor;
 	set->ncollisions = ncollisions;
@@ -311,7 +315,8 @@ int4hashset_add(PG_FUNCTION_ARGS)
 			DEFAULT_INITIAL_CAPACITY,
 			DEFAULT_LOAD_FACTOR,
 			DEFAULT_GROWTH_FACTOR,
-			DEFAULT_HASHFN_ID
+			DEFAULT_HASHFN1_ID,
+			DEFAULT_HASHFN2_ID
 		);
 	}
 	else
@@ -396,7 +401,8 @@ int4hashset_init(PG_FUNCTION_ARGS)
 	int32 initial_capacity = PG_GETARG_INT32(0);
 	float4 load_factor = PG_GETARG_FLOAT4(1);
 	float4 growth_factor = PG_GETARG_FLOAT4(2);
-	int32 hashfn_id = PG_GETARG_INT32(3);
+	int32 hashfn1_id = PG_GETARG_INT32(3);
+	int32 hashfn2_id = PG_GETARG_INT32(3);
 
 	/* Validate input arguments */
 	if (!(initial_capacity >= 0))
@@ -420,9 +426,18 @@ int4hashset_init(PG_FUNCTION_ARGS)
 				 errmsg("growth factor must be greater than 1.0")));
 	}
 
-	if (!(hashfn_id == JENKINS_LOOKUP3_HASHFN_ID ||
-	      hashfn_id == MURMURHASH32_HASHFN_ID ||
-		  hashfn_id == NAIVE_HASHFN_ID))
+	if (!(hashfn1_id == JENKINS_LOOKUP3_HASHFN_ID ||
+	      hashfn1_id == MURMURHASH32_HASHFN_ID ||
+		  hashfn1_id == NAIVE_HASHFN_ID))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("Invalid hash function ID")));
+	}
+
+	if (!(hashfn2_id == JENKINS_LOOKUP3_HASHFN_ID ||
+	      hashfn2_id == MURMURHASH32_HASHFN_ID ||
+		  hashfn2_id == NAIVE_HASHFN_ID))
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -433,7 +448,8 @@ int4hashset_init(PG_FUNCTION_ARGS)
 		initial_capacity,
 		load_factor,
 		growth_factor,
-		hashfn_id
+		hashfn1_id,
+		hashfn2_id
 	);
 
 	PG_RETURN_POINTER(set);
@@ -511,7 +527,8 @@ int4hashset_agg_add(PG_FUNCTION_ARGS)
 			DEFAULT_INITIAL_CAPACITY,
 			DEFAULT_LOAD_FACTOR,
 			DEFAULT_GROWTH_FACTOR,
-			DEFAULT_HASHFN_ID
+			DEFAULT_HASHFN1_ID,
+			DEFAULT_HASHFN2_ID
 		);
 		MemoryContextSwitchTo(oldcontext);
 	}
@@ -558,7 +575,8 @@ int4hashset_agg_add_set(PG_FUNCTION_ARGS)
 			DEFAULT_INITIAL_CAPACITY,
 			DEFAULT_LOAD_FACTOR,
 			DEFAULT_GROWTH_FACTOR,
-			DEFAULT_HASHFN_ID
+			DEFAULT_HASHFN1_ID,
+			DEFAULT_HASHFN2_ID
 		);
 		MemoryContextSwitchTo(oldcontext);
 	}
