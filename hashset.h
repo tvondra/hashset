@@ -16,6 +16,8 @@
 #define JENKINS_LOOKUP3_HASHFN_ID 1
 #define MURMURHASH32_HASHFN_ID 2
 #define NAIVE_HASHFN_ID 3
+#define NAIVE_HASHFN_MULTIPLIER 7691
+#define NAIVE_HASHFN_INCREMENT 4201
 
 /*
  * These defaults should match the the SQL function int4hashset()

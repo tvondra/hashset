@@ -176,21 +176,22 @@ int4hashset_contains_element(int4hashset_t *set, int32 value)
 	int     byte;
 	int     bit;
 	uint32  hash;
+	uint32	position;
 	char   *bitmap;
 	int32  *values;
 	int     num_probes = 0; /* Add a counter for the number of probes */
 
 	if (set->hashfn_id == JENKINS_LOOKUP3_HASHFN_ID)
 	{
-		hash = hash_bytes_uint32((uint32) value) % set->capacity;
+		hash = hash_bytes_uint32((uint32) value);
 	}
 	else if (set->hashfn_id == MURMURHASH32_HASHFN_ID)
 	{
-		hash = murmurhash32((uint32) value) % set->capacity;
+		hash = murmurhash32((uint32) value);
 	}
 	else if (set->hashfn_id == NAIVE_HASHFN_ID)
 	{
-		hash = ((uint32) value * 7691 + 4201) % set->capacity;
+		hash = ((uint32) value * NAIVE_HASHFN_MULTIPLIER + NAIVE_HASHFN_INCREMENT);
 	}
 	else
 	{
@@ -199,24 +200,26 @@ int4hashset_contains_element(int4hashset_t *set, int32 value)
 				errmsg("invalid hash function ID: \"%d\"", set->hashfn_id)));
 	}
 
+	position = hash % set->capacity;
+
 	bitmap = set->data;
 	values = (int32 *) (set->data + CEIL_DIV(set->capacity, 8));
 
 	while (true)
 	{
-		byte = (hash / 8);
-		bit = (hash % 8);
+		byte = (position / 8);
+		bit = (position % 8);
 
 		/* found an empty slot, value is not there */
 		if ((bitmap[byte] & (0x01 << bit)) == 0)
 			return false;
 
 		/* is it the same value? */
-		if (values[hash] == value)
+		if (values[position] == value)
 			return true;
 
 		/* move to the next element */
-		hash = (hash + HASHSET_STEP) % set->capacity;
+		position = (position + HASHSET_STEP) % set->capacity;
 
 		num_probes++; /* Increment the number of probes */
 
