@@ -53,12 +53,6 @@ SELECT hashset_add(int4hashset(), 123);
  {123}
 (1 row)
 
-SELECT hashset_add(NULL::int4hashset, 123);
- hashset_add 
--------------
- {123}
-(1 row)
-
 SELECT hashset_add('{123}'::int4hashset, 456);
  hashset_add 
 -------------

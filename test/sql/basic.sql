@@ -20,7 +20,6 @@ SELECT int4hashset(
     hashfn_id := 1
 );
 SELECT hashset_add(int4hashset(), 123);
-SELECT hashset_add(NULL::int4hashset, 123);
 SELECT hashset_add('{123}'::int4hashset, 456);
 SELECT hashset_contains('{123,456}'::int4hashset, 456); -- true
 SELECT hashset_contains('{123,456}'::int4hashset, 789); -- false

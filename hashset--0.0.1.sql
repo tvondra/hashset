@@ -50,42 +50,42 @@ LANGUAGE C IMMUTABLE;
 CREATE OR REPLACE FUNCTION hashset_add(int4hashset, int)
 RETURNS int4hashset
 AS 'hashset', 'int4hashset_add'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION hashset_contains(int4hashset, int)
 RETURNS bool
 AS 'hashset', 'int4hashset_contains'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION hashset_merge(int4hashset, int4hashset)
 RETURNS int4hashset
 AS 'hashset', 'int4hashset_merge'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION hashset_to_array(int4hashset)
 RETURNS int[]
 AS 'hashset', 'int4hashset_to_array'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION hashset_count(int4hashset)
 RETURNS bigint
 AS 'hashset', 'int4hashset_count'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION hashset_capacity(int4hashset)
 RETURNS bigint
 AS 'hashset', 'int4hashset_capacity'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION hashset_collisions(int4hashset)
 RETURNS bigint
 AS 'hashset', 'int4hashset_collisions'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION hashset_max_collisions(int4hashset)
 RETURNS bigint
 AS 'hashset', 'int4hashset_max_collisions'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION int4_add_int4hashset(int4, int4hashset)
 RETURNS int4hashset
@@ -96,17 +96,17 @@ IMMUTABLE PARALLEL SAFE STRICT COST 1;
 CREATE OR REPLACE FUNCTION hashset_intersection(int4hashset, int4hashset)
 RETURNS int4hashset
 AS 'hashset', 'int4hashset_intersection'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION hashset_difference(int4hashset, int4hashset)
 RETURNS int4hashset
 AS 'hashset', 'int4hashset_difference'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION hashset_symmetric_difference(int4hashset, int4hashset)
 RETURNS int4hashset
 AS 'hashset', 'int4hashset_symmetric_difference'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C IMMUTABLE STRICT;
 
 /*
  * Aggregation Functions
@@ -120,7 +120,7 @@ LANGUAGE C IMMUTABLE;
 CREATE OR REPLACE FUNCTION int4hashset_agg_final(p_pointer internal)
 RETURNS int4hashset
 AS 'hashset', 'int4hashset_agg_final'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION int4hashset_agg_combine(p_pointer internal, p_pointer2 internal)
 RETURNS internal
@@ -143,7 +143,7 @@ LANGUAGE C IMMUTABLE;
 CREATE OR REPLACE FUNCTION int4hashset_agg_final(p_pointer internal)
 RETURNS int4hashset
 AS 'hashset', 'int4hashset_agg_final'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION int4hashset_agg_combine(p_pointer internal, p_pointer2 internal)
 RETURNS internal
