@@ -18,8 +18,8 @@ PG_FUNCTION_INFO_V1(int4hashset_send);
 PG_FUNCTION_INFO_V1(int4hashset_recv);
 PG_FUNCTION_INFO_V1(int4hashset_add);
 PG_FUNCTION_INFO_V1(int4hashset_contains);
-PG_FUNCTION_INFO_V1(int4hashset_count);
-PG_FUNCTION_INFO_V1(int4hashset_merge);
+PG_FUNCTION_INFO_V1(int4hashset_cardinality);
+PG_FUNCTION_INFO_V1(int4hashset_union);
 PG_FUNCTION_INFO_V1(int4hashset_init);
 PG_FUNCTION_INFO_V1(int4hashset_capacity);
 PG_FUNCTION_INFO_V1(int4hashset_collisions);
@@ -29,8 +29,9 @@ PG_FUNCTION_INFO_V1(int4hashset_agg_add_set);
 PG_FUNCTION_INFO_V1(int4hashset_agg_final);
 PG_FUNCTION_INFO_V1(int4hashset_agg_combine);
 PG_FUNCTION_INFO_V1(int4hashset_to_array);
-PG_FUNCTION_INFO_V1(int4hashset_equals);
-PG_FUNCTION_INFO_V1(int4hashset_neq);
+PG_FUNCTION_INFO_V1(int4hashset_to_sorted_array);
+PG_FUNCTION_INFO_V1(int4hashset_eq);
+PG_FUNCTION_INFO_V1(int4hashset_ne);
 PG_FUNCTION_INFO_V1(int4hashset_hash);
 PG_FUNCTION_INFO_V1(int4hashset_lt);
 PG_FUNCTION_INFO_V1(int4hashset_le);
@@ -47,8 +48,8 @@ Datum int4hashset_send(PG_FUNCTION_ARGS);
 Datum int4hashset_recv(PG_FUNCTION_ARGS);
 Datum int4hashset_add(PG_FUNCTION_ARGS);
 Datum int4hashset_contains(PG_FUNCTION_ARGS);
-Datum int4hashset_count(PG_FUNCTION_ARGS);
-Datum int4hashset_merge(PG_FUNCTION_ARGS);
+Datum int4hashset_cardinality(PG_FUNCTION_ARGS);
+Datum int4hashset_union(PG_FUNCTION_ARGS);
 Datum int4hashset_init(PG_FUNCTION_ARGS);
 Datum int4hashset_capacity(PG_FUNCTION_ARGS);
 Datum int4hashset_collisions(PG_FUNCTION_ARGS);
@@ -58,8 +59,9 @@ Datum int4hashset_agg_add_set(PG_FUNCTION_ARGS);
 Datum int4hashset_agg_final(PG_FUNCTION_ARGS);
 Datum int4hashset_agg_combine(PG_FUNCTION_ARGS);
 Datum int4hashset_to_array(PG_FUNCTION_ARGS);
-Datum int4hashset_equals(PG_FUNCTION_ARGS);
-Datum int4hashset_neq(PG_FUNCTION_ARGS);
+Datum int4hashset_to_sorted_array(PG_FUNCTION_ARGS);
+Datum int4hashset_eq(PG_FUNCTION_ARGS);
+Datum int4hashset_ne(PG_FUNCTION_ARGS);
 Datum int4hashset_hash(PG_FUNCTION_ARGS);
 Datum int4hashset_lt(PG_FUNCTION_ARGS);
 Datum int4hashset_le(PG_FUNCTION_ARGS);
@@ -114,33 +116,42 @@ int4hashset_in(PG_FUNCTION_ARGS)
 			break;
 		}
 
-		/* Parse the number */
-		value = strtol(str, &endptr, 10);
-
-		if (errno == ERANGE || value < PG_INT32_MIN || value > PG_INT32_MAX)
+		/* Check if "null" is encountered (case-insensitive) */
+		if (strncasecmp(str, "null", 4) == 0)
 		{
-			ereport(ERROR,
-					(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-					errmsg("value \"%s\" is out of range for type %s", str,
-							"integer")));
+			set->null_element = true;
+			str = str + 4; /* Move past "null" */
 		}
-
-		/* Add the value to the hashset, resize if needed */
-		if (set->nelements >= set->capacity)
+		else
 		{
-			set = int4hashset_resize(set);
-		}
-		set = int4hashset_add_element(set, (int32)value);
+			/* Parse the number */
+			value = strtol(str, &endptr, 10);
 
-		/* Error handling for strtol */
-		if (endptr == str)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-					errmsg("invalid input syntax for integer: \"%s\"", str)));
-		}
+			if (errno == ERANGE || value < PG_INT32_MIN || value > PG_INT32_MAX)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+						errmsg("value \"%s\" is out of range for type %s", str,
+								"integer")));
+			}
 
-		str = endptr; /* Move to next potential number or closing brace */
+			/* Add the value to the hashset, resize if needed */
+			if (set->nelements >= set->capacity)
+			{
+				set = int4hashset_resize(set);
+			}
+			set = int4hashset_add_element(set, (int32)value);
+
+			/* Error handling for strtol */
+			if (endptr == str)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+						errmsg("invalid input syntax for integer: \"%s\"", str)));
+			}
+
+			str = endptr; /* Move to next number, "null" or closing brace */
+		}
 
         /* Skip spaces before the next number or closing brace */
 		while (hashset_isspace(*str)) str++;
@@ -209,6 +220,14 @@ int4hashset_out(PG_FUNCTION_ARGS)
 		}
 	}
 
+	/* Check if the null_element field is set */
+	if (set->null_element)
+	{
+		if (str.len > 1)
+			appendStringInfoChar(&str, ',');
+		appendStringInfoString(&str, "NULL");
+	}
+
 	/* Append the closing brace for the output hashset string */
 	appendStringInfoChar(&str, '}');
 
@@ -240,6 +259,7 @@ int4hashset_send(PG_FUNCTION_ARGS)
 	pq_sendint32(&buf, set->ncollisions);
 	pq_sendint32(&buf, set->max_collisions);
 	pq_sendint32(&buf, set->hash);
+    pq_sendbyte(&buf, set->null_element ? 1 : 0);
 
 	/* Compute and send the size of the data field */
 	data_size = VARSIZE(set) - offsetof(int4hashset_t, data);
@@ -266,6 +286,7 @@ int4hashset_recv(PG_FUNCTION_ARGS)
 	int32			ncollisions;
 	int32			max_collisions;
 	int32			hash;
+	bool			null_element;
 
 	version = pq_getmsgint(buf, 1);
 	if (version != 1)
@@ -281,6 +302,7 @@ int4hashset_recv(PG_FUNCTION_ARGS)
 	ncollisions = pq_getmsgint(buf, 4);
 	max_collisions = pq_getmsgint(buf, 4);
 	hash = pq_getmsgint(buf, 4);
+	null_element = pq_getmsgbyte(buf) == 1;
 
 	/* Compute the size of the data field */
 	data_size = buf->len - buf->cursor;
@@ -310,6 +332,7 @@ int4hashset_recv(PG_FUNCTION_ARGS)
 	set->ncollisions = ncollisions;
 	set->max_collisions = max_collisions;
 	set->hash = hash;
+	set->null_element = null_element;
 	memcpy(set->data, binary_data, data_size);
 
 	PG_RETURN_POINTER(set);
@@ -318,10 +341,31 @@ int4hashset_recv(PG_FUNCTION_ARGS)
 Datum
 int4hashset_add(PG_FUNCTION_ARGS)
 {
-	int4hashset_t *set = int4hashset_add_element(
-		PG_GETARG_INT4HASHSET_COPY(0),
-		PG_GETARG_INT32(1)
-	);
+	int4hashset_t *set;
+	/* If there's no hashset allocated, create it now */
+	if (PG_ARGISNULL(0))
+	{
+		set = int4hashset_allocate(
+				DEFAULT_INITIAL_CAPACITY,
+				DEFAULT_LOAD_FACTOR,
+				DEFAULT_GROWTH_FACTOR,
+				DEFAULT_HASHFN_ID
+		);
+	}
+	else
+	{
+		set = PG_GETARG_INT4HASHSET_COPY(0);
+	}
+
+	if (PG_ARGISNULL(1))
+	{
+		set->null_element = true;
+	}
+	else
+	{
+		int32 element = PG_GETARG_INT32(1);
+		set = int4hashset_add_element(set, element);
+	}
 
 	PG_RETURN_POINTER(set);
 }
@@ -329,28 +373,47 @@ int4hashset_add(PG_FUNCTION_ARGS)
 Datum
 int4hashset_contains(PG_FUNCTION_ARGS)
 {
-	int4hashset_t  *set = PG_GETARG_INT4HASHSET(0);
-	int32			value = PG_GETARG_INT32(1);
+	int4hashset_t  *set;
+	int32			value;
+	bool			result;
 
-	PG_RETURN_BOOL(int4hashset_contains_element(set, value));
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+
+	set = PG_GETARG_INT4HASHSET(0);
+
+	if (set->nelements == 0 && !set->null_element)
+		PG_RETURN_BOOL(false);
+
+	if (PG_ARGISNULL(1))
+		PG_RETURN_NULL();
+
+	value = PG_GETARG_INT32(1);
+	result = int4hashset_contains_element(set, value);
+
+	if (!result && set->null_element)
+		PG_RETURN_NULL();
+
+	PG_RETURN_BOOL(result);
 }
 
 Datum
-int4hashset_count(PG_FUNCTION_ARGS)
+int4hashset_cardinality(PG_FUNCTION_ARGS)
 {
 	int4hashset_t	*set = PG_GETARG_INT4HASHSET(0);
+	int64			 cardinality = set->nelements + (set->null_element ? 1 : 0);
 
-	PG_RETURN_INT64(set->nelements);
+	PG_RETURN_INT64(cardinality);
 }
 
 Datum
-int4hashset_merge(PG_FUNCTION_ARGS)
+int4hashset_union(PG_FUNCTION_ARGS)
 {
 	int				i;
 	int4hashset_t  *seta = PG_GETARG_INT4HASHSET_COPY(0);
 	int4hashset_t  *setb = PG_GETARG_INT4HASHSET(1);
 	char		   *bitmap = setb->data;
-	int32_t		   *values = (int32 *) (bitmap + CEIL_DIV(setb->capacity, 8));
+	int32		   *values = (int32 *) (bitmap + CEIL_DIV(setb->capacity, 8));
 
 	for (i = 0; i < setb->capacity; i++)
 	{
@@ -360,6 +423,9 @@ int4hashset_merge(PG_FUNCTION_ARGS)
 		if (bitmap[byte] & (0x01 << bit))
 			seta = int4hashset_add_element(seta, values[i]);
 	}
+
+	if (!seta->null_element && setb->null_element)
+		seta->null_element = true;
 
 	PG_RETURN_POINTER(seta);
 }
@@ -629,6 +695,12 @@ int4hashset_to_array(PG_FUNCTION_ARGS)
 
 	set = PG_GETARG_INT4HASHSET(0);
 
+	/* if hashset is empty and does not contain null, return an empty array */
+	if(set->nelements == 0 && !set->null_element) {
+		Datum d = PointerGetDatum(construct_empty_array(INT4OID));
+		PG_RETURN_ARRAYTYPE_P(d);
+	}
+
 	sbitmap = set->data;
 	svalues = (int32 *) (set->data + CEIL_DIV(set->capacity, 8));
 
@@ -648,11 +720,35 @@ int4hashset_to_array(PG_FUNCTION_ARGS)
 
 	Assert(idx == nvalues);
 
-	return int32_to_array(fcinfo, values, nvalues);
+	return int32_to_array(fcinfo, values, nvalues, set->null_element);
 }
 
 Datum
-int4hashset_equals(PG_FUNCTION_ARGS)
+int4hashset_to_sorted_array(PG_FUNCTION_ARGS)
+{
+	int4hashset_t	   *set;
+	int32			   *values;
+	int					nvalues;
+
+	set = PG_GETARG_INT4HASHSET(0);
+
+	/* if hashset is empty and does not contain null, return an empty array */
+	if(set->nelements == 0 && !set->null_element) {
+		Datum d = PointerGetDatum(construct_empty_array(INT4OID));
+		PG_RETURN_ARRAYTYPE_P(d);
+	}
+
+	/* extract the sorted elements from the hashset */
+	values = int4hashset_extract_sorted_elements(set);
+
+	/* number of values to store in the array */
+	nvalues = set->nelements;
+
+	return int32_to_array(fcinfo, values, nvalues, set->null_element);
+}
+
+Datum
+int4hashset_eq(PG_FUNCTION_ARGS)
 {
 	int				i;
 	int4hashset_t  *a = PG_GETARG_INT4HASHSET(0);
@@ -686,6 +782,9 @@ int4hashset_equals(PG_FUNCTION_ARGS)
 		}
 	}
 
+	if (a->null_element != b->null_element)
+		PG_RETURN_BOOL(false);
+
 	/*
 	 * All elements in a are in b and the number of elements is the same,
 	 * so the sets must be equal.
@@ -695,13 +794,13 @@ int4hashset_equals(PG_FUNCTION_ARGS)
 
 
 Datum
-int4hashset_neq(PG_FUNCTION_ARGS)
+int4hashset_ne(PG_FUNCTION_ARGS)
 {
     int4hashset_t *a = PG_GETARG_INT4HASHSET(0);
     int4hashset_t *b = PG_GETARG_INT4HASHSET(1);
 
     /* If a is not equal to b, then they are not equal */
-    if (!DatumGetBool(DirectFunctionCall2(int4hashset_equals, PointerGetDatum(a), PointerGetDatum(b))))
+    if (!DatumGetBool(DirectFunctionCall2(int4hashset_eq, PointerGetDatum(a), PointerGetDatum(b))))
         PG_RETURN_BOOL(true);
 
     PG_RETURN_BOOL(false);
@@ -842,7 +941,7 @@ int4hashset_intersection(PG_FUNCTION_ARGS)
 	int4hashset_t  *seta = PG_GETARG_INT4HASHSET(0);
 	int4hashset_t  *setb = PG_GETARG_INT4HASHSET(1);
 	char		   *bitmap = setb->data;
-	int32_t		   *values = (int32_t *)(bitmap + CEIL_DIV(setb->capacity, 8));
+	int32		   *values = (int32 *)(bitmap + CEIL_DIV(setb->capacity, 8));
 	int4hashset_t  *intersection;
 
 	intersection = int4hashset_allocate(
@@ -864,6 +963,9 @@ int4hashset_intersection(PG_FUNCTION_ARGS)
 		}
 	}
 
+	if (seta->null_element && setb->null_element)
+		intersection->null_element = true;
+
 	PG_RETURN_POINTER(intersection);
 }
 
@@ -875,7 +977,7 @@ int4hashset_difference(PG_FUNCTION_ARGS)
 	int4hashset_t	*setb = PG_GETARG_INT4HASHSET(1);
 	int4hashset_t	*difference;
 	char			*bitmap = seta->data;
-	int32_t			*values = (int32_t *)(bitmap + CEIL_DIV(seta->capacity, 8));
+	int32			*values = (int32 *)(bitmap + CEIL_DIV(seta->capacity, 8));
 
 	difference = int4hashset_allocate(
 		seta->capacity,
@@ -896,6 +998,9 @@ int4hashset_difference(PG_FUNCTION_ARGS)
 		}
 	}
 
+	if (seta->null_element && !setb->null_element)
+		difference->null_element = true;
+
 	PG_RETURN_POINTER(difference);
 }
 
@@ -908,8 +1013,8 @@ int4hashset_symmetric_difference(PG_FUNCTION_ARGS)
 	int4hashset_t  *result;
 	char		   *bitmapa = seta->data;
 	char		   *bitmapb = setb->data;
-	int32_t		   *valuesa = (int32 *) (bitmapa + CEIL_DIV(seta->capacity, 8));
-	int32_t		   *valuesb = (int32 *) (bitmapb + CEIL_DIV(setb->capacity, 8));
+	int32		   *valuesa = (int32 *) (bitmapa + CEIL_DIV(seta->capacity, 8));
+	int32		   *valuesb = (int32 *) (bitmapb + CEIL_DIV(setb->capacity, 8));
 
 	result = int4hashset_allocate(
 		seta->nelements + setb->nelements,
@@ -945,6 +1050,9 @@ int4hashset_symmetric_difference(PG_FUNCTION_ARGS)
 				result = int4hashset_add_element(result, value);
 		}
 	}
+
+	if (seta->null_element ^ setb->null_element)
+		result->null_element = true;
 
 	PG_RETURN_POINTER(result);
 }

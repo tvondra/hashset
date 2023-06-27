@@ -1,0 +1,365 @@
+CREATE OR REPLACE FUNCTION array_union(int4[], int4[])
+RETURNS int4[]
+AS
+$$
+SELECT
+    CASE
+        WHEN
+            $1 IS NULL OR $2 IS NULL
+        THEN
+            NULL
+        ELSE
+        COALESCE((
+            SELECT array_agg(DISTINCT unnest ORDER BY unnest) FROM
+            (
+                SELECT unnest($1)
+                UNION
+                SELECT unnest($2)
+            ) q
+        ),'{}'::int4[])
+    END
+$$ LANGUAGE sql;
+CREATE OR REPLACE FUNCTION array_intersection(int4[], int4[])
+RETURNS int4[]
+AS
+$$
+SELECT
+    CASE
+        WHEN
+            $1 IS NULL OR $2 IS NULL
+        THEN
+            NULL
+        ELSE
+        COALESCE((
+            SELECT array_agg(DISTINCT unnest ORDER BY unnest) FROM
+            (
+                SELECT unnest($1)
+                INTERSECT
+                SELECT unnest($2)
+            ) q
+        ),'{}'::int4[])
+    END
+$$ LANGUAGE sql;
+CREATE OR REPLACE FUNCTION array_difference(int4[], int4[])
+RETURNS int4[]
+AS
+$$
+SELECT
+    CASE
+        WHEN
+            $1 IS NULL OR $2 IS NULL
+        THEN
+            NULL
+        ELSE
+        COALESCE((
+            SELECT array_agg(DISTINCT unnest ORDER BY unnest) FROM
+            (
+                SELECT unnest($1)
+                EXCEPT
+                SELECT unnest($2)
+            ) q
+        ),'{}'::int4[])
+    END
+$$ LANGUAGE sql;
+CREATE OR REPLACE FUNCTION array_symmetric_difference(int4[], int4[])
+RETURNS int4[]
+AS
+$$
+SELECT
+    CASE
+        WHEN
+            $1 IS NULL OR $2 IS NULL
+        THEN
+            NULL
+        ELSE
+        COALESCE((
+            SELECT array_agg(DISTINCT unnest ORDER BY unnest) FROM
+            (
+                SELECT
+                    *
+                FROM
+                (
+                    SELECT unnest($1)
+                    UNION
+                    SELECT unnest($2)
+                ) AS q1
+                EXCEPT
+                SELECT
+                    *
+                FROM
+                (
+                    SELECT unnest($1)
+                    INTERSECT
+                    SELECT unnest($2)
+                ) AS q2
+            ) AS q3
+        ),'{}'::int4[])
+    END
+$$ LANGUAGE sql;
+CREATE OR REPLACE FUNCTION array_sort_distinct(int4[])
+RETURNS int4[]
+AS
+$$
+SELECT
+    CASE
+        WHEN
+            cardinality($1) = 0
+        THEN
+            '{}'::int4[]
+        ELSE
+        (
+            SELECT array_agg(DISTINCT unnest ORDER BY unnest) FROM unnest($1)
+        )
+    END
+$$ LANGUAGE sql;
+DROP TABLE IF EXISTS hashset_test_results_1;
+NOTICE:  table "hashset_test_results_1" does not exist, skipping
+CREATE TABLE hashset_test_results_1 AS
+SELECT
+    arg1,
+    arg2,
+    hashset_add(arg1::int4hashset, arg2),
+    array_append(arg1::int4[], arg2),
+    hashset_contains(arg1::int4hashset, arg2),
+    arg2 = ANY(arg1::int4[]) AS "= ANY(...)"
+FROM (VALUES (NULL), ('{}'), ('{NULL}'), ('{1}'), ('{2}'), ('{1,2}'), ('{2,3}')) AS a(arg1)
+CROSS JOIN (VALUES (NULL::int4), (1::int4), (4::int4)) AS b(arg2);
+DROP TABLE IF EXISTS hashset_test_results_2;
+NOTICE:  table "hashset_test_results_2" does not exist, skipping
+CREATE TABLE hashset_test_results_2 AS
+SELECT
+    arg1,
+    arg2,
+    hashset_union(arg1::int4hashset, arg2::int4hashset),
+    array_union(arg1::int4[], arg2::int4[]),
+    hashset_intersection(arg1::int4hashset, arg2::int4hashset),
+    array_intersection(arg1::int4[], arg2::int4[]),
+    hashset_difference(arg1::int4hashset, arg2::int4hashset),
+    array_difference(arg1::int4[], arg2::int4[]),
+    hashset_symmetric_difference(arg1::int4hashset, arg2::int4hashset),
+    array_symmetric_difference(arg1::int4[], arg2::int4[]),
+    hashset_eq(arg1::int4hashset, arg2::int4hashset),
+    array_eq(arg1::int4[], arg2::int4[]),
+    hashset_ne(arg1::int4hashset, arg2::int4hashset),
+    array_ne(arg1::int4[], arg2::int4[])
+FROM (VALUES (NULL), ('{}'), ('{NULL}'), ('{1}'), ('{1,NULL}'), ('{2}'), ('{1,2}'), ('{2,3}')) AS a(arg1)
+CROSS JOIN (VALUES (NULL), ('{}'), ('{NULL}'), ('{1}'), ('{1,NULL}'), ('{2}'), ('{1,2}'), ('{2,3}')) AS b(arg2);
+DROP TABLE IF EXISTS hashset_test_results_3;
+NOTICE:  table "hashset_test_results_3" does not exist, skipping
+CREATE TABLE hashset_test_results_3 AS
+SELECT
+    arg1,
+    hashset_cardinality(arg1::int4hashset),
+    cardinality(arg1::int4[])
+FROM (VALUES (NULL), ('{}'), ('{NULL}'), ('{1}'), ('{2}'), ('{1,2}'), ('{2,3}')) AS a(arg1);
+SELECT * FROM hashset_test_results_1;
+  arg1  | arg2 | hashset_add | array_append | hashset_contains | = ANY(...) 
+--------+------+-------------+--------------+------------------+------------
+        |      | {NULL}      | {NULL}       |                  | 
+        |    1 | {1}         | {1}          |                  | 
+        |    4 | {4}         | {4}          |                  | 
+ {}     |      | {NULL}      | {NULL}       | f                | f
+ {}     |    1 | {1}         | {1}          | f                | f
+ {}     |    4 | {4}         | {4}          | f                | f
+ {NULL} |      | {NULL}      | {NULL,NULL}  |                  | 
+ {NULL} |    1 | {1,NULL}    | {NULL,1}     |                  | 
+ {NULL} |    4 | {4,NULL}    | {NULL,4}     |                  | 
+ {1}    |      | {1,NULL}    | {1,NULL}     |                  | 
+ {1}    |    1 | {1}         | {1,1}        | t                | t
+ {1}    |    4 | {1,4}       | {1,4}        | f                | f
+ {2}    |      | {2,NULL}    | {2,NULL}     |                  | 
+ {2}    |    1 | {2,1}       | {2,1}        | f                | f
+ {2}    |    4 | {2,4}       | {2,4}        | f                | f
+ {1,2}  |      | {1,2,NULL}  | {1,2,NULL}   |                  | 
+ {1,2}  |    1 | {1,2}       | {1,2,1}      | t                | t
+ {1,2}  |    4 | {4,1,2}     | {1,2,4}      | f                | f
+ {2,3}  |      | {2,3,NULL}  | {2,3,NULL}   |                  | 
+ {2,3}  |    1 | {1,2,3}     | {2,3,1}      | f                | f
+ {2,3}  |    4 | {4,2,3}     | {2,3,4}      | f                | f
+(21 rows)
+
+SELECT * FROM hashset_test_results_2;
+   arg1   |   arg2   | hashset_union | array_union  | hashset_intersection | array_intersection | hashset_difference | array_difference | hashset_symmetric_difference | array_symmetric_difference | hashset_eq | array_eq | hashset_ne | array_ne 
+----------+----------+---------------+--------------+----------------------+--------------------+--------------------+------------------+------------------------------+----------------------------+------------+----------+------------+----------
+          |          |               |              |                      |                    |                    |                  |                              |                            |            |          |            | 
+          | {}       |               |              |                      |                    |                    |                  |                              |                            |            |          |            | 
+          | {NULL}   |               |              |                      |                    |                    |                  |                              |                            |            |          |            | 
+          | {1}      |               |              |                      |                    |                    |                  |                              |                            |            |          |            | 
+          | {1,NULL} |               |              |                      |                    |                    |                  |                              |                            |            |          |            | 
+          | {2}      |               |              |                      |                    |                    |                  |                              |                            |            |          |            | 
+          | {1,2}    |               |              |                      |                    |                    |                  |                              |                            |            |          |            | 
+          | {2,3}    |               |              |                      |                    |                    |                  |                              |                            |            |          |            | 
+ {}       |          |               |              |                      |                    |                    |                  |                              |                            |            |          |            | 
+ {}       | {}       | {}            | {}           | {}                   | {}                 | {}                 | {}               | {}                           | {}                         | t          | t        | f          | f
+ {}       | {NULL}   | {NULL}        | {NULL}       | {}                   | {}                 | {}                 | {}               | {NULL}                       | {NULL}                     | f          | f        | t          | t
+ {}       | {1}      | {1}           | {1}          | {}                   | {}                 | {}                 | {}               | {1}                          | {1}                        | f          | f        | t          | t
+ {}       | {1,NULL} | {1,NULL}      | {1,NULL}     | {}                   | {}                 | {}                 | {}               | {1,NULL}                     | {1,NULL}                   | f          | f        | t          | t
+ {}       | {2}      | {2}           | {2}          | {}                   | {}                 | {}                 | {}               | {2}                          | {2}                        | f          | f        | t          | t
+ {}       | {1,2}    | {1,2}         | {1,2}        | {}                   | {}                 | {}                 | {}               | {1,2}                        | {1,2}                      | f          | f        | t          | t
+ {}       | {2,3}    | {2,3}         | {2,3}        | {}                   | {}                 | {}                 | {}               | {2,3}                        | {2,3}                      | f          | f        | t          | t
+ {NULL}   |          |               |              |                      |                    |                    |                  |                              |                            |            |          |            | 
+ {NULL}   | {}       | {NULL}        | {NULL}       | {}                   | {}                 | {NULL}             | {NULL}           | {NULL}                       | {NULL}                     | f          | f        | t          | t
+ {NULL}   | {NULL}   | {NULL}        | {NULL}       | {NULL}               | {NULL}             | {}                 | {}               | {}                           | {}                         | t          | t        | f          | f
+ {NULL}   | {1}      | {1,NULL}      | {1,NULL}     | {}                   | {}                 | {NULL}             | {NULL}           | {1,NULL}                     | {1,NULL}                   | f          | f        | t          | t
+ {NULL}   | {1,NULL} | {1,NULL}      | {1,NULL}     | {NULL}               | {NULL}             | {}                 | {}               | {1}                          | {1}                        | f          | f        | t          | t
+ {NULL}   | {2}      | {2,NULL}      | {2,NULL}     | {}                   | {}                 | {NULL}             | {NULL}           | {2,NULL}                     | {2,NULL}                   | f          | f        | t          | t
+ {NULL}   | {1,2}    | {2,1,NULL}    | {1,2,NULL}   | {}                   | {}                 | {NULL}             | {NULL}           | {1,2,NULL}                   | {1,2,NULL}                 | f          | f        | t          | t
+ {NULL}   | {2,3}    | {3,2,NULL}    | {2,3,NULL}   | {}                   | {}                 | {NULL}             | {NULL}           | {2,3,NULL}                   | {2,3,NULL}                 | f          | f        | t          | t
+ {1}      |          |               |              |                      |                    |                    |                  |                              |                            |            |          |            | 
+ {1}      | {}       | {1}           | {1}          | {}                   | {}                 | {1}                | {1}              | {1}                          | {1}                        | f          | f        | t          | t
+ {1}      | {NULL}   | {1,NULL}      | {1,NULL}     | {}                   | {}                 | {1}                | {1}              | {1,NULL}                     | {1,NULL}                   | f          | f        | t          | t
+ {1}      | {1}      | {1}           | {1}          | {1}                  | {1}                | {}                 | {}               | {}                           | {}                         | t          | t        | f          | f
+ {1}      | {1,NULL} | {1,NULL}      | {1,NULL}     | {1}                  | {1}                | {}                 | {}               | {NULL}                       | {NULL}                     | f          | f        | t          | t
+ {1}      | {2}      | {1,2}         | {1,2}        | {}                   | {}                 | {1}                | {1}              | {1,2}                        | {1,2}                      | f          | f        | t          | t
+ {1}      | {1,2}    | {1,2}         | {1,2}        | {1}                  | {1}                | {}                 | {}               | {2}                          | {2}                        | f          | f        | t          | t
+ {1}      | {2,3}    | {3,1,2}       | {1,2,3}      | {}                   | {}                 | {1}                | {1}              | {3,2,1}                      | {1,2,3}                    | f          | f        | t          | t
+ {1,NULL} |          |               |              |                      |                    |                    |                  |                              |                            |            |          |            | 
+ {1,NULL} | {}       | {1,NULL}      | {1,NULL}     | {}                   | {}                 | {1,NULL}           | {1,NULL}         | {1,NULL}                     | {1,NULL}                   | f          | f        | t          | t
+ {1,NULL} | {NULL}   | {1,NULL}      | {1,NULL}     | {NULL}               | {NULL}             | {1}                | {1}              | {1}                          | {1}                        | f          | f        | t          | t
+ {1,NULL} | {1}      | {1,NULL}      | {1,NULL}     | {1}                  | {1}                | {NULL}             | {NULL}           | {NULL}                       | {NULL}                     | f          | f        | t          | t
+ {1,NULL} | {1,NULL} | {1,NULL}      | {1,NULL}     | {1,NULL}             | {1,NULL}           | {}                 | {}               | {}                           | {}                         | t          | t        | f          | f
+ {1,NULL} | {2}      | {1,2,NULL}    | {1,2,NULL}   | {}                   | {}                 | {1,NULL}           | {1,NULL}         | {1,2,NULL}                   | {1,2,NULL}                 | f          | f        | t          | t
+ {1,NULL} | {1,2}    | {1,2,NULL}    | {1,2,NULL}   | {1}                  | {1}                | {NULL}             | {NULL}           | {2,NULL}                     | {2,NULL}                   | f          | f        | t          | t
+ {1,NULL} | {2,3}    | {3,1,2,NULL}  | {1,2,3,NULL} | {}                   | {}                 | {1,NULL}           | {1,NULL}         | {3,2,1,NULL}                 | {1,2,3,NULL}               | f          | f        | t          | t
+ {2}      |          |               |              |                      |                    |                    |                  |                              |                            |            |          |            | 
+ {2}      | {}       | {2}           | {2}          | {}                   | {}                 | {2}                | {2}              | {2}                          | {2}                        | f          | f        | t          | t
+ {2}      | {NULL}   | {2,NULL}      | {2,NULL}     | {}                   | {}                 | {2}                | {2}              | {2,NULL}                     | {2,NULL}                   | f          | f        | t          | t
+ {2}      | {1}      | {2,1}         | {1,2}        | {}                   | {}                 | {2}                | {2}              | {2,1}                        | {1,2}                      | f          | f        | t          | t
+ {2}      | {1,NULL} | {2,1,NULL}    | {1,2,NULL}   | {}                   | {}                 | {2}                | {2}              | {2,1,NULL}                   | {1,2,NULL}                 | f          | f        | t          | t
+ {2}      | {2}      | {2}           | {2}          | {2}                  | {2}                | {}                 | {}               | {}                           | {}                         | t          | t        | f          | f
+ {2}      | {1,2}    | {2,1}         | {1,2}        | {2}                  | {2}                | {}                 | {}               | {1}                          | {1}                        | f          | f        | t          | t
+ {2}      | {2,3}    | {2,3}         | {2,3}        | {2}                  | {2}                | {}                 | {}               | {3}                          | {3}                        | f          | f        | t          | t
+ {1,2}    |          |               |              |                      |                    |                    |                  |                              |                            |            |          |            | 
+ {1,2}    | {}       | {1,2}         | {1,2}        | {}                   | {}                 | {1,2}              | {1,2}            | {1,2}                        | {1,2}                      | f          | f        | t          | t
+ {1,2}    | {NULL}   | {1,2,NULL}    | {1,2,NULL}   | {}                   | {}                 | {1,2}              | {1,2}            | {1,2,NULL}                   | {1,2,NULL}                 | f          | f        | t          | t
+ {1,2}    | {1}      | {1,2}         | {1,2}        | {1}                  | {1}                | {2}                | {2}              | {2}                          | {2}                        | f          | f        | t          | t
+ {1,2}    | {1,NULL} | {1,2,NULL}    | {1,2,NULL}   | {1}                  | {1}                | {2}                | {2}              | {2,NULL}                     | {2,NULL}                   | f          | f        | t          | t
+ {1,2}    | {2}      | {1,2}         | {1,2}        | {2}                  | {2}                | {1}                | {1}              | {1}                          | {1}                        | f          | f        | t          | t
+ {1,2}    | {1,2}    | {1,2}         | {1,2}        | {1,2}                | {1,2}              | {}                 | {}               | {}                           | {}                         | t          | t        | f          | f
+ {1,2}    | {2,3}    | {3,1,2}       | {1,2,3}      | {2}                  | {2}                | {1}                | {1}              | {1,3}                        | {1,3}                      | f          | f        | t          | t
+ {2,3}    |          |               |              |                      |                    |                    |                  |                              |                            |            |          |            | 
+ {2,3}    | {}       | {2,3}         | {2,3}        | {}                   | {}                 | {2,3}              | {2,3}            | {2,3}                        | {2,3}                      | f          | f        | t          | t
+ {2,3}    | {NULL}   | {2,3,NULL}    | {2,3,NULL}   | {}                   | {}                 | {2,3}              | {2,3}            | {2,3,NULL}                   | {2,3,NULL}                 | f          | f        | t          | t
+ {2,3}    | {1}      | {1,2,3}       | {1,2,3}      | {}                   | {}                 | {2,3}              | {2,3}            | {3,2,1}                      | {1,2,3}                    | f          | f        | t          | t
+ {2,3}    | {1,NULL} | {1,2,3,NULL}  | {1,2,3,NULL} | {}                   | {}                 | {2,3}              | {2,3}            | {3,2,1,NULL}                 | {1,2,3,NULL}               | f          | f        | t          | t
+ {2,3}    | {2}      | {2,3}         | {2,3}        | {2}                  | {2}                | {3}                | {3}              | {3}                          | {3}                        | f          | f        | t          | t
+ {2,3}    | {1,2}    | {1,2,3}       | {1,2,3}      | {2}                  | {2}                | {3}                | {3}              | {1,3}                        | {1,3}                      | f          | f        | t          | t
+ {2,3}    | {2,3}    | {2,3}         | {2,3}        | {2,3}                | {2,3}              | {}                 | {}               | {}                           | {}                         | t          | t        | f          | f
+(64 rows)
+
+SELECT * FROM hashset_test_results_3;
+  arg1  | hashset_cardinality | cardinality 
+--------+---------------------+-------------
+        |                     |            
+ {}     |                   0 |           0
+ {NULL} |                   1 |           1
+ {1}    |                   1 |           1
+ {2}    |                   1 |           1
+ {1,2}  |                   2 |           2
+ {2,3}  |                   2 |           2
+(7 rows)
+
+/*
+ * The queries below should not return any rows since the hashset
+ * semantics should be identical to array semantics, given the array elements
+ * are distinct and both are compared as sorted arrays.
+ */
+\echo *** Testing: hashset_add()
+*** Testing: hashset_add()
+SELECT * FROM hashset_test_results_1
+WHERE
+    hashset_to_sorted_array(hashset_add)
+IS DISTINCT FROM
+    array_sort_distinct(array_append);
+ arg1 | arg2 | hashset_add | array_append | hashset_contains | = ANY(...) 
+------+------+-------------+--------------+------------------+------------
+(0 rows)
+
+\echo *** Testing: hashset_contains()
+*** Testing: hashset_contains()
+SELECT * FROM hashset_test_results_1
+WHERE
+    hashset_contains
+IS DISTINCT FROM
+    "= ANY(...)";
+ arg1 | arg2 | hashset_add | array_append | hashset_contains | = ANY(...) 
+------+------+-------------+--------------+------------------+------------
+(0 rows)
+
+\echo *** Testing: hashset_union()
+*** Testing: hashset_union()
+SELECT * FROM hashset_test_results_2
+WHERE
+    hashset_to_sorted_array(hashset_union)
+IS DISTINCT FROM
+    array_sort_distinct(array_union);
+ arg1 | arg2 | hashset_union | array_union | hashset_intersection | array_intersection | hashset_difference | array_difference | hashset_symmetric_difference | array_symmetric_difference | hashset_eq | array_eq | hashset_ne | array_ne 
+------+------+---------------+-------------+----------------------+--------------------+--------------------+------------------+------------------------------+----------------------------+------------+----------+------------+----------
+(0 rows)
+
+\echo *** Testing: hashset_intersection()
+*** Testing: hashset_intersection()
+SELECT * FROM hashset_test_results_2
+WHERE
+    hashset_to_sorted_array(hashset_intersection)
+IS DISTINCT FROM
+    array_sort_distinct(array_intersection);
+ arg1 | arg2 | hashset_union | array_union | hashset_intersection | array_intersection | hashset_difference | array_difference | hashset_symmetric_difference | array_symmetric_difference | hashset_eq | array_eq | hashset_ne | array_ne 
+------+------+---------------+-------------+----------------------+--------------------+--------------------+------------------+------------------------------+----------------------------+------------+----------+------------+----------
+(0 rows)
+
+\echo *** Testing: hashset_difference()
+*** Testing: hashset_difference()
+SELECT * FROM hashset_test_results_2
+WHERE
+    hashset_to_sorted_array(hashset_difference)
+IS DISTINCT FROM
+    array_sort_distinct(array_difference);
+ arg1 | arg2 | hashset_union | array_union | hashset_intersection | array_intersection | hashset_difference | array_difference | hashset_symmetric_difference | array_symmetric_difference | hashset_eq | array_eq | hashset_ne | array_ne 
+------+------+---------------+-------------+----------------------+--------------------+--------------------+------------------+------------------------------+----------------------------+------------+----------+------------+----------
+(0 rows)
+
+\echo *** Testing: hashset_symmetric_difference()
+*** Testing: hashset_symmetric_difference()
+SELECT * FROM hashset_test_results_2
+WHERE
+    hashset_to_sorted_array(hashset_symmetric_difference)
+IS DISTINCT FROM
+    array_sort_distinct(array_symmetric_difference);
+ arg1 | arg2 | hashset_union | array_union | hashset_intersection | array_intersection | hashset_difference | array_difference | hashset_symmetric_difference | array_symmetric_difference | hashset_eq | array_eq | hashset_ne | array_ne 
+------+------+---------------+-------------+----------------------+--------------------+--------------------+------------------+------------------------------+----------------------------+------------+----------+------------+----------
+(0 rows)
+
+\echo *** Testing: hashset_eq()
+*** Testing: hashset_eq()
+SELECT * FROM hashset_test_results_2
+WHERE
+    hashset_eq
+IS DISTINCT FROM
+    array_eq;
+ arg1 | arg2 | hashset_union | array_union | hashset_intersection | array_intersection | hashset_difference | array_difference | hashset_symmetric_difference | array_symmetric_difference | hashset_eq | array_eq | hashset_ne | array_ne 
+------+------+---------------+-------------+----------------------+--------------------+--------------------+------------------+------------------------------+----------------------------+------------+----------+------------+----------
+(0 rows)
+
+\echo *** Testing: hashset_ne()
+*** Testing: hashset_ne()
+SELECT * FROM hashset_test_results_2
+WHERE
+    hashset_ne
+IS DISTINCT FROM
+    array_ne;
+ arg1 | arg2 | hashset_union | array_union | hashset_intersection | array_intersection | hashset_difference | array_difference | hashset_symmetric_difference | array_symmetric_difference | hashset_eq | array_eq | hashset_ne | array_ne 
+------+------+---------------+-------------+----------------------+--------------------+--------------------+------------------+------------------------------+----------------------------+------------+----------+------------+----------
+(0 rows)
+
+\echo *** Testing: hashset_cardinality()
+*** Testing: hashset_cardinality()
+SELECT * FROM hashset_test_results_3
+WHERE
+    hashset_cardinality
+IS DISTINCT FROM
+    cardinality;
+ arg1 | hashset_cardinality | cardinality 
+------+---------------------+-------------
+(0 rows)
+

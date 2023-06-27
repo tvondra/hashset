@@ -28,16 +28,17 @@
 #define DEFAULT_HASHFN_ID JENKINS_LOOKUP3_HASHFN_ID
 
 typedef struct int4hashset_t {
-	int32		vl_len_;		/* varlena header (do not touch directly!) */
-	int32		flags;			/* reserved for future use (versioning, ...) */
-	int32		capacity;		/* max number of element we have space for */
-	int32		nelements;		/* number of items added to the hashset */
+	int32		vl_len_;		/* Varlena header (do not touch directly!) */
+	int32		flags;			/* Reserved for future use (versioning, ...) */
+	int32		capacity;		/* Max number of element we have space for */
+	int32		nelements;		/* Number of items added to the hashset */
 	int32		hashfn_id;		/* ID of the hash function used */
 	float4		load_factor;	/* Load factor before triggering resize */
 	float4		growth_factor;	/* Growth factor when resizing the hashset */
 	int32		ncollisions;	/* Number of collisions */
 	int32		max_collisions;	/* Maximum collisions for a single element */
 	int32		hash;			/* Stored hash value of the hashset */
+	bool		null_element;	/* Indicates if null is present in hashset */
 	char		data[FLEXIBLE_ARRAY_MEMBER];
 } int4hashset_t;
 
@@ -48,6 +49,6 @@ bool int4hashset_contains_element(int4hashset_t *set, int32 value);
 int32 *int4hashset_extract_sorted_elements(int4hashset_t *set);
 int4hashset_t *int4hashset_copy(int4hashset_t *src);
 bool hashset_isspace(char ch);
-Datum int32_to_array(FunctionCallInfo fcinfo, int32 *d, int len);
+Datum int32_to_array(FunctionCallInfo fcinfo, int32 *d, int len, bool null_element);
 
 #endif /* HASHSET_H */

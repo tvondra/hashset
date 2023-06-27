@@ -49,7 +49,7 @@ UPDATE users SET user_likes = hashset_add(user_likes, 202) WHERE user_id = 1;
 SELECT hashset_contains(user_likes, 101) FROM users WHERE user_id = 1; -- true
 
 -- Count the number of likes a user has
-SELECT hashset_count(user_likes) FROM users WHERE user_id = 1; -- 2
+SELECT hashset_cardinality(user_likes) FROM users WHERE user_id = 1; -- 2
 ```
 
 You can also use the aggregate functions to perform operations on multiple rows.
@@ -75,9 +75,9 @@ a variable-length type.
         - 3=Naive hash function
 - `hashset_add(int4hashset, int) -> int4hashset`: Adds an integer to an int4hashset.
 - `hashset_contains(int4hashset, int) -> boolean`: Checks if an int4hashset contains a given integer.
-- `hashset_merge(int4hashset, int4hashset) -> int4hashset`: Merges two int4hashsets into a new int4hashset.
+- `hashset_union(int4hashset, int4hashset) -> int4hashset`: Merges two int4hashsets into a new int4hashset.
 - `hashset_to_array(int4hashset) -> int[]`: Converts an int4hashset to an array of integers.
-- `hashset_count(int4hashset) -> bigint`: Returns the number of elements in an int4hashset.
+- `hashset_cardinality(int4hashset) -> bigint`: Returns the number of elements in an int4hashset.
 - `hashset_capacity(int4hashset) -> bigint`: Returns the current capacity of an int4hashset.
 - `hashset_max_collisions(int4hashset) -> bigint`: Returns the maximum number of collisions that have occurred for a single element
 - `hashset_intersection(int4hashset, int4hashset) -> int4hashset`: Returns a new int4hashset that is the intersection of the two input sets.

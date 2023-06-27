@@ -46,6 +46,7 @@ int4hashset_allocate(
 	set->ncollisions = 0;
 	set->max_collisions = 0;
 	set->hash = 0; /* Initial hash value */
+	set->null_element = false; /* No null element initially */
 
 	set->flags |= 0;
 
@@ -298,7 +299,7 @@ hashset_isspace(char ch)
  * Construct an SQL array from a simple C double array
  */
 Datum
-int32_to_array(FunctionCallInfo fcinfo, int32 *d, int len)
+int32_to_array(FunctionCallInfo fcinfo, int32 *d, int len, bool null_element)
 {
 	ArrayBuildState *astate = NULL;
 	int		 i;
@@ -309,6 +310,15 @@ int32_to_array(FunctionCallInfo fcinfo, int32 *d, int len)
 		astate = accumArrayResult(astate,
 								  Int32GetDatum(d[i]),
 								  false,
+								  INT4OID,
+								  CurrentMemoryContext);
+	}
+
+	if (null_element)
+	{
+		astate = accumArrayResult(astate,
+								  (Datum) 0,
+								  true,
 								  INT4OID,
 								  CurrentMemoryContext);
 	}

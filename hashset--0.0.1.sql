@@ -50,16 +50,16 @@ LANGUAGE C IMMUTABLE;
 CREATE OR REPLACE FUNCTION hashset_add(int4hashset, int)
 RETURNS int4hashset
 AS 'hashset', 'int4hashset_add'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION hashset_contains(int4hashset, int)
-RETURNS bool
+RETURNS boolean
 AS 'hashset', 'int4hashset_contains'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION hashset_merge(int4hashset, int4hashset)
+CREATE OR REPLACE FUNCTION hashset_union(int4hashset, int4hashset)
 RETURNS int4hashset
-AS 'hashset', 'int4hashset_merge'
+AS 'hashset', 'int4hashset_union'
 LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION hashset_to_array(int4hashset)
@@ -67,9 +67,14 @@ RETURNS int[]
 AS 'hashset', 'int4hashset_to_array'
 LANGUAGE C IMMUTABLE STRICT;
 
-CREATE OR REPLACE FUNCTION hashset_count(int4hashset)
+CREATE OR REPLACE FUNCTION hashset_to_sorted_array(int4hashset)
+RETURNS int[]
+AS 'hashset', 'int4hashset_to_sorted_array'
+LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION hashset_cardinality(int4hashset)
 RETURNS bigint
-AS 'hashset', 'int4hashset_count'
+AS 'hashset', 'int4hashset_cardinality'
 LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION hashset_capacity(int4hashset)
@@ -162,28 +167,28 @@ CREATE AGGREGATE hashset_agg(int4hashset) (
  * Operator Definitions
  */
 
-CREATE OR REPLACE FUNCTION hashset_equals(int4hashset, int4hashset)
-RETURNS bool
-AS 'hashset', 'int4hashset_equals'
+CREATE OR REPLACE FUNCTION hashset_eq(int4hashset, int4hashset)
+RETURNS boolean
+AS 'hashset', 'int4hashset_eq'
 LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OPERATOR = (
     LEFTARG = int4hashset,
     RIGHTARG = int4hashset,
-    PROCEDURE = hashset_equals,
+    PROCEDURE = hashset_eq,
     COMMUTATOR = =,
     HASHES
 );
 
-CREATE OR REPLACE FUNCTION hashset_neq(int4hashset, int4hashset)
-RETURNS bool
-AS 'hashset', 'int4hashset_neq'
+CREATE OR REPLACE FUNCTION hashset_ne(int4hashset, int4hashset)
+RETURNS boolean
+AS 'hashset', 'int4hashset_ne'
 LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OPERATOR <> (
     LEFTARG = int4hashset,
     RIGHTARG = int4hashset,
-    PROCEDURE = hashset_neq,
+    PROCEDURE = hashset_ne,
     COMMUTATOR = '<>',
     NEGATOR = '=',
     RESTRICT = neqsel,
@@ -224,7 +229,7 @@ FUNCTION 1 hashset_hash(int4hashset);
  */
 
 CREATE OR REPLACE FUNCTION hashset_lt(int4hashset, int4hashset)
-RETURNS bool
+RETURNS boolean
 AS 'hashset', 'int4hashset_lt'
 LANGUAGE C IMMUTABLE STRICT;
 

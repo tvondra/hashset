@@ -1,7 +1,7 @@
 /*
- * Bug in hashset_add() and hashset_merge() functions altering original hashset.
+ * Bug in hashset_add() and hashset_union() functions altering original hashset.
  *
- * Previously, the hashset_add() and hashset_merge() functions were modifying the
+ * Previously, the hashset_add() and hashset_union() functions were modifying the
  * original hashset in-place, leading to unexpected results as the original data
  * within the hashset was being altered.
  *
@@ -10,7 +10,7 @@
  * a copy of the hashset is created and subsequently modified, thereby preserving
  * the integrity of the original hashset.
  *
- * As a result of this fix, hashset_add() and hashset_merge() now operate on
+ * As a result of this fix, hashset_add() and hashset_union() now operate on
  * a copied hashset, ensuring that the original data remains unaltered, and
  * the query executes correctly.
  */

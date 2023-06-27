@@ -11,10 +11,10 @@ SELECT hashset_contains(user_likes, 101) FROM users WHERE user_id = 1;
  t
 (1 row)
 
-SELECT hashset_count(user_likes) FROM users WHERE user_id = 1;
- hashset_count 
----------------
-             2
+SELECT hashset_cardinality(user_likes) FROM users WHERE user_id = 1;
+ hashset_cardinality 
+---------------------
+                   2
 (1 row)
 
 SELECT hashset_sorted(user_likes) FROM users WHERE user_id = 1;

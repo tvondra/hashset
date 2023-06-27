@@ -71,8 +71,8 @@ SELECT hashset_contains('{123,456}'::int4hashset, 789); -- false
  f
 (1 row)
 
-SELECT hashset_merge('{1,2}'::int4hashset, '{2,3}'::int4hashset);
- hashset_merge 
+SELECT hashset_union('{1,2}'::int4hashset, '{2,3}'::int4hashset);
+ hashset_union 
 ---------------
  {3,1,2}
 (1 row)
@@ -83,10 +83,10 @@ SELECT hashset_to_array('{1,2,3}'::int4hashset);
  {3,2,1}
 (1 row)
 
-SELECT hashset_count('{1,2,3}'::int4hashset); -- 3
- hashset_count 
----------------
-             3
+SELECT hashset_cardinality('{1,2,3}'::int4hashset); -- 3
+ hashset_cardinality 
+---------------------
+                   3
 (1 row)
 
 SELECT hashset_capacity(int4hashset(capacity := 10)); -- 10

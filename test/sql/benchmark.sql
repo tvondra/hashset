@@ -65,7 +65,7 @@ SELECT hashset_agg(rnd) FROM benchmark_input_10M;
 SELECT cardinality(array_agg) FROM benchmark_array_agg ORDER BY 1;
 
 SELECT
-    hashset_count(hashset_agg),
+    hashset_cardinality(hashset_agg),
     hashset_capacity(hashset_agg),
     hashset_collisions(hashset_agg),
     hashset_max_collisions(hashset_agg)
@@ -88,7 +88,7 @@ BEGIN
     FOR i IN 1..100000 LOOP
         h := hashset_add(h, i);
     END LOOP;
-    RAISE NOTICE 'hashset_count: %', hashset_count(h);
+    RAISE NOTICE 'hashset_cardinality: %', hashset_cardinality(h);
     RAISE NOTICE 'hashset_capacity: %', hashset_capacity(h);
     RAISE NOTICE 'hashset_collisions: %', hashset_collisions(h);
     RAISE NOTICE 'hashset_max_collisions: %', hashset_max_collisions(h);
@@ -106,7 +106,7 @@ BEGIN
     FOR i IN 1..100000 LOOP
         h := hashset_add(h, i);
     END LOOP;
-    RAISE NOTICE 'hashset_count: %', hashset_count(h);
+    RAISE NOTICE 'hashset_cardinality: %', hashset_cardinality(h);
     RAISE NOTICE 'hashset_capacity: %', hashset_capacity(h);
     RAISE NOTICE 'hashset_collisions: %', hashset_collisions(h);
     RAISE NOTICE 'hashset_max_collisions: %', hashset_max_collisions(h);
@@ -124,7 +124,7 @@ BEGIN
     FOR i IN 1..100000 LOOP
         h := hashset_add(h, i);
     END LOOP;
-    RAISE NOTICE 'hashset_count: %', hashset_count(h);
+    RAISE NOTICE 'hashset_cardinality: %', hashset_cardinality(h);
     RAISE NOTICE 'hashset_capacity: %', hashset_capacity(h);
     RAISE NOTICE 'hashset_collisions: %', hashset_collisions(h);
     RAISE NOTICE 'hashset_max_collisions: %', hashset_max_collisions(h);
@@ -145,7 +145,7 @@ BEGIN
     FOR i IN 1..100000 LOOP
         h := hashset_add(h, (floor(4294967296 * random()) - 2147483648)::int);
     END LOOP;
-    RAISE NOTICE 'hashset_count: %', hashset_count(h);
+    RAISE NOTICE 'hashset_cardinality: %', hashset_cardinality(h);
     RAISE NOTICE 'hashset_capacity: %', hashset_capacity(h);
     RAISE NOTICE 'hashset_collisions: %', hashset_collisions(h);
     RAISE NOTICE 'hashset_max_collisions: %', hashset_max_collisions(h);
@@ -164,7 +164,7 @@ BEGIN
     FOR i IN 1..100000 LOOP
         h := hashset_add(h, (floor(4294967296 * random()) - 2147483648)::int);
     END LOOP;
-    RAISE NOTICE 'hashset_count: %', hashset_count(h);
+    RAISE NOTICE 'hashset_cardinality: %', hashset_cardinality(h);
     RAISE NOTICE 'hashset_capacity: %', hashset_capacity(h);
     RAISE NOTICE 'hashset_collisions: %', hashset_collisions(h);
     RAISE NOTICE 'hashset_max_collisions: %', hashset_max_collisions(h);
@@ -183,7 +183,7 @@ BEGIN
     FOR i IN 1..100000 LOOP
         h := hashset_add(h, (floor(4294967296 * random()) - 2147483648)::int);
     END LOOP;
-    RAISE NOTICE 'hashset_count: %', hashset_count(h);
+    RAISE NOTICE 'hashset_cardinality: %', hashset_cardinality(h);
     RAISE NOTICE 'hashset_capacity: %', hashset_capacity(h);
     RAISE NOTICE 'hashset_collisions: %', hashset_collisions(h);
     RAISE NOTICE 'hashset_max_collisions: %', hashset_max_collisions(h);
