@@ -34,14 +34,14 @@ variable-length type.
 
 ### int4hashset([capacity int, load_factor float4, growth_factor float4, hashfn_id int4]) -> int4hashset
 
-  Initialize an empty int4hashset with optional parameters.
-    - `capacity` specifies the initial capacity, which is zero by default.
-    - `load_factor` represents the threshold for resizing the hashset and defaults to 0.75.
-    - `growth_factor` is the multiplier for resizing and defaults to 2.0.
-    - `hashfn_id` represents the hash function used.
-        - 1=Jenkins/lookup3 (default)
-        - 2=MurmurHash32
-        - 3=Naive hash function
+Initialize an empty int4hashset with optional parameters.
+  - `capacity` specifies the initial capacity, which is zero by default.
+  - `load_factor` represents the threshold for resizing the hashset and defaults to 0.75.
+  - `growth_factor` is the multiplier for resizing and defaults to 2.0.
+  - `hashfn_id` represents the hash function used.
+    - 1=Jenkins/lookup3 (default)
+    - 2=MurmurHash32
+    - 3=Naive hash function
 
 
 ### hashset_add(int4hashset, int) -> int4hashset
