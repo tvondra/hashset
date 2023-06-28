@@ -1,8 +1,6 @@
 #include "hashset.h"
 
-#include <stdio.h>
 #include <math.h>
-#include <string.h>
 #include <sys/time.h>
 #include <unistd.h>
 #include <limits.h>
@@ -696,10 +694,8 @@ int4hashset_to_array(PG_FUNCTION_ARGS)
 	set = PG_GETARG_INT4HASHSET(0);
 
 	/* if hashset is empty and does not contain null, return an empty array */
-	if(set->nelements == 0 && !set->null_element) {
-		Datum d = PointerGetDatum(construct_empty_array(INT4OID));
-		PG_RETURN_ARRAYTYPE_P(d);
-	}
+	if(set->nelements == 0 && !set->null_element)
+		PG_RETURN_ARRAYTYPE_P(construct_empty_array(INT4OID));
 
 	sbitmap = set->data;
 	svalues = (int32 *) (set->data + CEIL_DIV(set->capacity, 8));
@@ -733,10 +729,8 @@ int4hashset_to_sorted_array(PG_FUNCTION_ARGS)
 	set = PG_GETARG_INT4HASHSET(0);
 
 	/* if hashset is empty and does not contain null, return an empty array */
-	if(set->nelements == 0 && !set->null_element) {
-		Datum d = PointerGetDatum(construct_empty_array(INT4OID));
-		PG_RETURN_ARRAYTYPE_P(d);
-	}
+	if(set->nelements == 0 && !set->null_element)
+		PG_RETURN_ARRAYTYPE_P(construct_empty_array(INT4OID));
 
 	/* extract the sorted elements from the hashset */
 	values = int4hashset_extract_sorted_elements(set);
