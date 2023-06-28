@@ -11,6 +11,31 @@ difference, equality check, and cardinality calculation.
 element. When multiple `NULL` values are present in the input, they are treated
 as a single `NULL`.
 
+## Table of Contents
+1. [Version](#version)
+2. [Data Types](#data-types)
+   - [int4hashset](#int4hashset)
+3. [Functions](#functions)
+   - [int4hashset](#int4hashset-1)
+   - [hashset_add](#hashset_add)
+   - [hashset_contains](#hashset_contains)
+   - [hashset_to_array](#hashset_to_array)
+   - [hashset_to_sorted_array](#hashset_to_sorted_array)
+   - [hashset_cardinality](#hashset_cardinality)
+   - [hashset_capacity](#hashset_capacity)
+   - [hashset_max_collisions](#hashset_max_collisions)
+   - [hashset_union](#hashset_union)
+   - [hashset_intersection](#hashset_intersection)
+   - [hashset_difference](#hashset_difference)
+   - [hashset_symmetric_difference](#hashset_symmetric_difference)
+4. [Aggregation Functions](#aggregation-functions)
+5. [Operators](#operators)
+6. [Hashset Hash Operators](#hashset-hash-operators)
+7. [Hashset Btree Operators](#hashset-btree-operators)
+8. [Limitations](#limitations)
+9. [Installation](#installation)
+10. [License](#license)
+
 ## Version
 
 0.0.1
@@ -32,7 +57,9 @@ variable-length type.
 
 ## Functions
 
-### int4hashset([capacity int, load_factor float4, growth_factor float4, hashfn_id int4]) -> int4hashset
+### int4hashset()
+
+`int4hashset([capacity int, load_factor float4, growth_factor float4, hashfn_id int4]) -> int4hashset`
 
 Initialize an empty int4hashset with optional parameters.
   - `capacity` specifies the initial capacity, which is zero by default.
@@ -44,7 +71,9 @@ Initialize an empty int4hashset with optional parameters.
     - 3=Naive hash function
 
 
-### hashset_add(int4hashset, int) -> int4hashset
+### hashset_add()
+
+`hashset_add(int4hashset, int) -> int4hashset`
 
 Adds an integer to an int4hashset.
 
@@ -57,7 +86,9 @@ SELECT hashset_add('{1}', 2); -- {1,2}
 ```
 
 
-### hashset_contains(int4hashset, int) -> boolean
+### hashset_contains()
+
+`hashset_contains(int4hashset, int) -> boolean`
 
 Checks if an int4hashset contains a given integer.
 
@@ -83,23 +114,9 @@ SELECT hashset_contains(NULL, 1); -- NULL
 ```
 
 
-### hashset_union(int4hashset, int4hashset) -> int4hashset
+### hashset_to_array()
 
-Merges two int4hashsets into a new int4hashset.
-
-```sql
-SELECT hashset_union('{1,2}', '{2,3}'); -- '{1,2,3}
-```
-
-If any of the operands are `NULL`, the result is `NULL`.
-
-```sql
-SELECT hashset_union('{1}', NULL); -- NULL
-SELECT hashset_union(NULL, '{1}'); -- NULL
-```
-
-
-### hashset_to_array(int4hashset) -> int[]
+`hashset_to_array(int4hashset) -> int[]`
 
 Converts an int4hashset to an array of unsorted integers.
 
@@ -108,7 +125,9 @@ SELECT hashset_to_array('{2,1,3}'); -- {3,2,1}
 ```
 
 
-### hashset_to_sorted_array(int4hashset) -> int[]
+### hashset_to_sorted_array()
+
+`hashset_to_sorted_array(int4hashset) -> int[]`
 
 Converts an int4hashset to an array of sorted integers.
 
@@ -125,7 +144,9 @@ SELECT hashset_to_sorted_array('{2,1,NULL,3}'); -- {1,2,3,NULL}
 ```
 
 
-### hashset_cardinality(int4hashset) -> bigint
+### hashset_cardinality()
+
+`hashset_cardinality(int4hashset) -> bigint`
 
 Returns the number of elements in an int4hashset.
 
@@ -140,17 +161,41 @@ SELECT hashset_cardinality('{1,2,3}'); -- 3
 ```
 
 
-### hashset_capacity(int4hashset) -> bigint
+### hashset_capacity()
+
+`hashset_capacity(int4hashset) -> bigint`
 
 Returns the current capacity of an int4hashset.
 
 
-### hashset_max_collisions(int4hashset) -> bigint
+### hashset_max_collisions()
+
+`hashset_max_collisions(int4hashset) -> bigint`
 
 Returns the maximum number of collisions that have occurred for a single element
 
 
-### hashset_intersection(int4hashset, int4hashset) -> int4hashset
+### hashset_union()
+
+`hashset_union(int4hashset, int4hashset) -> int4hashset`
+
+Merges two int4hashsets into a new int4hashset.
+
+```sql
+SELECT hashset_union('{1,2}', '{2,3}'); -- '{1,2,3}
+```
+
+If any of the operands are `NULL`, the result is `NULL`.
+
+```sql
+SELECT hashset_union('{1}', NULL); -- NULL
+SELECT hashset_union(NULL, '{1}'); -- NULL
+```
+
+
+### hashset_intersection()
+
+`hashset_intersection(int4hashset, int4hashset) -> int4hashset`
 
 Returns a new int4hashset that is the intersection of the two input sets.
 
@@ -159,7 +204,17 @@ SELECT hashset_intersection('{1,2}', '{2,3}'); -- {2}
 SELECT hashset_intersection('{1,2,NULL}', '{2,3,NULL}'); -- {2,NULL}
 ```
 
-### hashset_difference(int4hashset, int4hashset) -> int4hashset
+If any of the operands are `NULL`, the result is `NULL`.
+
+```sql
+SELECT hashset_intersection('{1,2}', NULL); -- NULL
+SELECT hashset_intersection(NULL, '{2,3}'); -- NULL
+```
+
+
+### hashset_difference()
+
+`hashset_difference(int4hashset, int4hashset) -> int4hashset`
 
 Returns a new int4hashset that contains the elements present in the first set
 but not in the second set.
@@ -170,8 +225,17 @@ SELECT hashset_difference('{1,2,NULL}', '{2,3,NULL}'); -- {1}
 SELECT hashset_difference('{1,2,NULL}', '{2,3}'); -- {1,NULL}
 ```
 
+If any of the operands are `NULL`, the result is `NULL`.
 
-### hashset_symmetric_difference(int4hashset, int4hashset) -> int4hashset
+```sql
+SELECT hashset_difference('{1,2}', NULL); -- NULL
+SELECT hashset_difference(NULL, '{2,3}'); -- NULL
+```
+
+
+### hashset_symmetric_difference()
+
+`hashset_symmetric_difference(int4hashset, int4hashset) -> int4hashset`
 
 Returns a new int4hashset containing elements that are in either of the input sets, but not in their intersection.
 
@@ -181,11 +245,36 @@ SELECT hashset_symmetric_difference('{1,2,NULL}', '{2,3,NULL}'); -- {1,3}
 SELECT hashset_symmetric_difference('{1,2,NULL}', '{2,3}'); -- {1,3,NULL}
 ```
 
+If any of the operands are `NULL`, the result is `NULL`.
+
+```sql
+SELECT hashset_symmetric_difference('{1,2}', NULL); -- NULL
+SELECT hashset_symmetric_difference(NULL, '{2,3}'); -- NULL
+```
+
 
 ## Aggregation Functions
 
-- `hashset_agg(int) -> int4hashset`: Aggregate integers into a hashset.
-- `hashset_agg(int4hashset) -> int4hashset`: Aggregate hashsets into a hashset.
+### hashset_agg(int4)
+
+`hashset_agg(int4) -> int4hashset`
+
+Aggregate integers into a hashset.
+
+```sql
+SELECT hashset_agg(some_int4_column) FROM some_table;
+```
+
+
+### hashset_agg(int4hashset)
+
+`hashset_agg(int4hashset) -> int4hashset`
+
+Aggregate hashsets into a hashset.
+
+```sql
+SELECT hashset_agg(some_int4hashset_column) FROM some_table;
+```
 
 
 ## Operators
