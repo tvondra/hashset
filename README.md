@@ -1,8 +1,15 @@
 # hashset
 
 This PostgreSQL extension implements hashset, a data structure (type)
-providing a collection of unique, not null integer items with fast lookup.
+providing a collection of unique integer items with fast lookup.
 
+It provides several functions for working with these sets, including operations
+like addition, containment check, conversion to array, union, intersection,
+difference, equality check, and cardinality calculation.
+
+`NULL` values are also allowed in the hash set, and are considered as a unique
+element. When multiple `NULL` values are present in the input, they are treated
+as a single `NULL`.
 
 ## Version
 
@@ -14,57 +21,19 @@ with possible breaking changes, we are not providing any migration scripts
 until we reach our first release.
 
 
-## Usage
-
-After installing the extension, you can use the `int4hashset` data type and
-associated functions within your PostgreSQL queries.
-
-To demonstrate the usage, let's consider a hypothetical table `users` which has
-a `user_id` and a `user_likes` of type `int4hashset`.
-
-Firstly, let's create the table:
-
-```sql
-CREATE TABLE users(
-    user_id int PRIMARY KEY,
-    user_likes int4hashset DEFAULT int4hashset()
-);
-```
-In the above statement, the `int4hashset()` initializes an empty hashset
-with zero capacity. The hashset will automatically resize itself when more
-elements are added.
-
-Now, we can perform operations on this table. Here are some examples:
-
-```sql
--- Insert a new user with id 1. The user_likes will automatically be initialized
--- as an empty hashset
-INSERT INTO users (user_id) VALUES (1);
-
--- Add elements (likes) for a user
-UPDATE users SET user_likes = hashset_add(user_likes, 101) WHERE user_id = 1;
-UPDATE users SET user_likes = hashset_add(user_likes, 202) WHERE user_id = 1;
-
--- Check if a user likes a particular item
-SELECT hashset_contains(user_likes, 101) FROM users WHERE user_id = 1; -- true
-
--- Count the number of likes a user has
-SELECT hashset_cardinality(user_likes) FROM users WHERE user_id = 1; -- 2
-```
-
-You can also use the aggregate functions to perform operations on multiple rows.
-
-
 ## Data types
 
-- **int4hashset**: This data type represents a set of integers. Internally, it uses
-a combination of a bitmap and a value array to store the elements in a set. It's
-a variable-length type.
+### int4hashset
+
+This data type represents a set of integers. Internally, it uses a combination
+of a bitmap and a value array to store the elements in a set. It's a
+variable-length type.
 
 
 ## Functions
 
-- `int4hashset([capacity int, load_factor float4, growth_factor float4, hashfn_id int4]) -> int4hashset`:
+### int4hashset([capacity int, load_factor float4, growth_factor float4, hashfn_id int4]) -> int4hashset
+
   Initialize an empty int4hashset with optional parameters.
     - `capacity` specifies the initial capacity, which is zero by default.
     - `load_factor` represents the threshold for resizing the hashset and defaults to 0.75.
@@ -73,16 +42,145 @@ a variable-length type.
         - 1=Jenkins/lookup3 (default)
         - 2=MurmurHash32
         - 3=Naive hash function
-- `hashset_add(int4hashset, int) -> int4hashset`: Adds an integer to an int4hashset.
-- `hashset_contains(int4hashset, int) -> boolean`: Checks if an int4hashset contains a given integer.
-- `hashset_union(int4hashset, int4hashset) -> int4hashset`: Merges two int4hashsets into a new int4hashset.
-- `hashset_to_array(int4hashset) -> int[]`: Converts an int4hashset to an array of integers.
-- `hashset_cardinality(int4hashset) -> bigint`: Returns the number of elements in an int4hashset.
-- `hashset_capacity(int4hashset) -> bigint`: Returns the current capacity of an int4hashset.
-- `hashset_max_collisions(int4hashset) -> bigint`: Returns the maximum number of collisions that have occurred for a single element
-- `hashset_intersection(int4hashset, int4hashset) -> int4hashset`: Returns a new int4hashset that is the intersection of the two input sets.
-- `hashset_difference(int4hashset, int4hashset) -> int4hashset`: Returns a new int4hashset that contains the elements present in the first set but not in the second set.
-- `hashset_symmetric_difference(int4hashset, int4hashset) -> int4hashset`: Returns a new int4hashset containing elements that are in either of the input sets, but not in their intersection.
+
+
+### hashset_add(int4hashset, int) -> int4hashset
+
+Adds an integer to an int4hashset.
+
+```sql
+SELECT hashset_add(NULL, 1); -- {1}
+SELECT hashset_add('{NULL}', 1); -- {1,NULL}
+SELECT hashset_add('{1}', NULL); -- {1,NULL}
+SELECT hashset_add('{1}', 1); -- {1}
+SELECT hashset_add('{1}', 2); -- {1,2}
+```
+
+
+### hashset_contains(int4hashset, int) -> boolean
+
+Checks if an int4hashset contains a given integer.
+
+```sql
+SELECT hashset_contains('{1}', 1); -- TRUE
+SELECT hashset_contains('{1}', 2); -- FALSE
+```
+
+If the *cardinality* of the hashset is zero (0), it is known that it doesn't
+contain any value, not even an Unknown value represented as `NULL`, so even in
+that case it returns `FALSE`.
+
+```sql
+SELECT hashset_contains('{}', 1); -- FALSE
+SELECT hashset_contains('{}', NULL); -- FALSE
+```
+
+If the hashset is `NULL`, then the result is `NULL`.
+
+```sql
+SELECT hashset_contains(NULL, NULL); -- NULL
+SELECT hashset_contains(NULL, 1); -- NULL
+```
+
+
+### hashset_union(int4hashset, int4hashset) -> int4hashset
+
+Merges two int4hashsets into a new int4hashset.
+
+```sql
+SELECT hashset_union('{1,2}', '{2,3}'); -- '{1,2,3}
+```
+
+If any of the operands are `NULL`, the result is `NULL`.
+
+```sql
+SELECT hashset_union('{1}', NULL); -- NULL
+SELECT hashset_union(NULL, '{1}'); -- NULL
+```
+
+
+### hashset_to_array(int4hashset) -> int[]
+
+Converts an int4hashset to an array of unsorted integers.
+
+```sql
+SELECT hashset_to_array('{2,1,3}'); -- {3,2,1}
+```
+
+
+### hashset_to_sorted_array(int4hashset) -> int[]
+
+Converts an int4hashset to an array of sorted integers.
+
+```sql
+SELECT hashset_to_sorted_array('{2,1,3}'); -- {1,2,3}
+```
+
+If the hashset contains a `NULL` element, it follows the same behavior as the
+`ORDER BY` clause in SQL: the `NULL` element is positioned at the end of the
+sorted array.
+
+```sql
+SELECT hashset_to_sorted_array('{2,1,NULL,3}'); -- {1,2,3,NULL}
+```
+
+
+### hashset_cardinality(int4hashset) -> bigint
+
+Returns the number of elements in an int4hashset.
+
+```sql
+SELECT hashset_cardinality(NULL); -- NULL
+SELECT hashset_cardinality('{}'); -- 0
+SELECT hashset_cardinality('{1}'); -- 1
+SELECT hashset_cardinality('{1,1}'); -- 1
+SELECT hashset_cardinality('{NULL,NULL}'); -- 1
+SELECT hashset_cardinality('{1,NULL}'); -- 2
+SELECT hashset_cardinality('{1,2,3}'); -- 3
+```
+
+
+### hashset_capacity(int4hashset) -> bigint
+
+Returns the current capacity of an int4hashset.
+
+
+### hashset_max_collisions(int4hashset) -> bigint
+
+Returns the maximum number of collisions that have occurred for a single element
+
+
+### hashset_intersection(int4hashset, int4hashset) -> int4hashset
+
+Returns a new int4hashset that is the intersection of the two input sets.
+
+```sql
+SELECT hashset_intersection('{1,2}', '{2,3}'); -- {2}
+SELECT hashset_intersection('{1,2,NULL}', '{2,3,NULL}'); -- {2,NULL}
+```
+
+### hashset_difference(int4hashset, int4hashset) -> int4hashset
+
+Returns a new int4hashset that contains the elements present in the first set
+but not in the second set.
+
+```sql
+SELECT hashset_difference('{1,2}', '{2,3}'); -- {1}
+SELECT hashset_difference('{1,2,NULL}', '{2,3,NULL}'); -- {1}
+SELECT hashset_difference('{1,2,NULL}', '{2,3}'); -- {1,NULL}
+```
+
+
+### hashset_symmetric_difference(int4hashset, int4hashset) -> int4hashset
+
+Returns a new int4hashset containing elements that are in either of the input sets, but not in their intersection.
+
+```sql
+SELECT hashset_symmetric_difference('{1,2}', '{2,3}'); -- {1,3}
+SELECT hashset_symmetric_difference('{1,2,NULL}', '{2,3,NULL}'); -- {1,3}
+SELECT hashset_symmetric_difference('{1,2,NULL}', '{2,3}'); -- {1,3,NULL}
+```
+
 
 ## Aggregation Functions
 
