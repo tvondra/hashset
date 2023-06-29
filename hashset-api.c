@@ -186,15 +186,11 @@ int4hashset_in(PG_FUNCTION_ARGS)
 Datum
 int4hashset_out(PG_FUNCTION_ARGS)
 {
-	int4hashset_t *set = PG_GETARG_INT4HASHSET(0);
-	char *bitmap;
-	int32 *values;
-	int i;
-	StringInfoData str;
-
-	/* Calculate the pointer to the bitmap and values array */
-	bitmap = set->data;
-	values = (int32 *) (set->data + CEIL_DIV(set->capacity, 8));
+	int				i;
+	int4hashset_t  *set = PG_GETARG_INT4HASHSET(0);
+	char		   *bitmap = HASHSET_GET_BITMAP(set);
+	int32		   *values = HASHSET_GET_VALUES(set);
+	StringInfoData	str;
 
 	/* Initialize the StringInfo buffer */
 	initStringInfo(&str);
@@ -410,8 +406,8 @@ int4hashset_union(PG_FUNCTION_ARGS)
 	int				i;
 	int4hashset_t  *seta = PG_GETARG_INT4HASHSET_COPY(0);
 	int4hashset_t  *setb = PG_GETARG_INT4HASHSET(1);
-	char		   *bitmap = setb->data;
-	int32		   *values = (int32 *) (bitmap + CEIL_DIV(setb->capacity, 8));
+	char		   *bitmap = HASHSET_GET_BITMAP(setb);
+	int32		   *values = HASHSET_GET_VALUES(setb);
 
 	for (i = 0; i < setb->capacity; i++)
 	{
@@ -591,14 +587,9 @@ int4hashset_agg_add_set(PG_FUNCTION_ARGS)
 
 	{
 		int				i;
-		char		   *bitmap;
-		int32		   *values;
-		int4hashset_t  *value;
-
-		value = PG_GETARG_INT4HASHSET(1);
-
-		bitmap = value->data;
-		values = (int32 *) (value->data + CEIL_DIV(value->capacity, 8));
+		int4hashset_t  *value = PG_GETARG_INT4HASHSET(1);
+		char		   *bitmap = HASHSET_GET_BITMAP(value);
+		int32		   *values = HASHSET_GET_VALUES(value);
 
 		for (i = 0; i < value->capacity; i++)
 		{
@@ -664,8 +655,8 @@ int4hashset_agg_combine(PG_FUNCTION_ARGS)
 	src = (int4hashset_t *) PG_GETARG_POINTER(1);
 	dst = (int4hashset_t *) PG_GETARG_POINTER(0);
 
-	bitmap = src->data;
-	values = (int32 *) (src->data + CEIL_DIV(src->capacity, 8));
+	bitmap = HASHSET_GET_BITMAP(src);
+	values = HASHSET_GET_VALUES(src);
 
 	for (i = 0; i < src->capacity; i++)
 	{
@@ -685,20 +676,18 @@ int4hashset_to_array(PG_FUNCTION_ARGS)
 {
 	int					i,
 						idx;
-	int4hashset_t	   *set;
+	int4hashset_t	   *set = PG_GETARG_INT4HASHSET(0);
 	int32			   *values;
 	int					nvalues;
 	char			   *sbitmap;
 	int32			   *svalues;
 
-	set = PG_GETARG_INT4HASHSET(0);
-
 	/* if hashset is empty and does not contain null, return an empty array */
 	if(set->nelements == 0 && !set->null_element)
 		PG_RETURN_ARRAYTYPE_P(construct_empty_array(INT4OID));
 
-	sbitmap = set->data;
-	svalues = (int32 *) (set->data + CEIL_DIV(set->capacity, 8));
+	sbitmap = HASHSET_GET_BITMAP(set);
+	svalues = HASHSET_GET_VALUES(set);
 
 	/* number of values to store in the array */
 	nvalues = set->nelements;
@@ -756,8 +745,8 @@ int4hashset_eq(PG_FUNCTION_ARGS)
 	if (a->nelements != b->nelements)
 		PG_RETURN_BOOL(false);
 
-	bitmap_a = a->data;
-	values_a = (int32 *)(a->data + CEIL_DIV(a->capacity, 8));
+	bitmap_a = HASHSET_GET_BITMAP(a);
+	values_a = HASHSET_GET_VALUES(a);
 
 	/*
 	 * Check if every element in a is also in b
@@ -934,8 +923,9 @@ int4hashset_intersection(PG_FUNCTION_ARGS)
 	int				i;
 	int4hashset_t  *seta = PG_GETARG_INT4HASHSET(0);
 	int4hashset_t  *setb = PG_GETARG_INT4HASHSET(1);
-	char		   *bitmap = setb->data;
-	int32		   *values = (int32 *)(bitmap + CEIL_DIV(setb->capacity, 8));
+	char		   *bitmap = HASHSET_GET_BITMAP(setb);
+	int32		   *values = HASHSET_GET_VALUES(setb);
+
 	int4hashset_t  *intersection;
 
 	intersection = int4hashset_allocate(
@@ -970,8 +960,8 @@ int4hashset_difference(PG_FUNCTION_ARGS)
 	int4hashset_t	*seta = PG_GETARG_INT4HASHSET(0);
 	int4hashset_t	*setb = PG_GETARG_INT4HASHSET(1);
 	int4hashset_t	*difference;
-	char			*bitmap = seta->data;
-	int32			*values = (int32 *)(bitmap + CEIL_DIV(seta->capacity, 8));
+	char			*bitmap = HASHSET_GET_BITMAP(seta);
+	int32			*values = HASHSET_GET_VALUES(seta);
 
 	difference = int4hashset_allocate(
 		seta->capacity,
@@ -1005,10 +995,10 @@ int4hashset_symmetric_difference(PG_FUNCTION_ARGS)
 	int4hashset_t  *seta = PG_GETARG_INT4HASHSET(0);
 	int4hashset_t  *setb = PG_GETARG_INT4HASHSET(1);
 	int4hashset_t  *result;
-	char		   *bitmapa = seta->data;
-	char		   *bitmapb = setb->data;
-	int32		   *valuesa = (int32 *) (bitmapa + CEIL_DIV(seta->capacity, 8));
-	int32		   *valuesb = (int32 *) (bitmapb + CEIL_DIV(setb->capacity, 8));
+	char		   *bitmapa = HASHSET_GET_BITMAP(seta);
+	char		   *bitmapb = HASHSET_GET_BITMAP(setb);
+	int32		   *valuesa = HASHSET_GET_VALUES(seta);
+	int32		   *valuesb = HASHSET_GET_VALUES(setb);
 
 	result = int4hashset_allocate(
 		seta->nelements + setb->nelements,

@@ -58,8 +58,8 @@ int4hashset_resize(int4hashset_t * set)
 {
 	int				i;
 	int4hashset_t  *new;
-	char		   *bitmap;
-	int32		   *values;
+	char		   *bitmap = HASHSET_GET_BITMAP(set);
+	int32		   *values = HASHSET_GET_VALUES(set);
 	int				new_capacity;
 
 	new_capacity = (int)(set->capacity * set->growth_factor);
@@ -79,10 +79,6 @@ int4hashset_resize(int4hashset_t * set)
 		set->growth_factor,
 		set->hashfn_id
 	);
-
-	/* Calculate the pointer to the bitmap and values array */
-	bitmap = set->data;
-	values = (int32 *) (set->data + CEIL_DIV(set->capacity, 8));
 
 	for (i = 0; i < set->capacity; i++)
 	{
@@ -131,8 +127,8 @@ int4hashset_add_element(int4hashset_t *set, int32 value)
 
     position = hash % set->capacity;
 
-	bitmap = set->data;
-	values = (int32 *) (set->data + CEIL_DIV(set->capacity, 8));
+	bitmap = HASHSET_GET_BITMAP(set);
+	values = HASHSET_GET_VALUES(set);
 
 	while (true)
 	{
@@ -178,8 +174,8 @@ int4hashset_contains_element(int4hashset_t *set, int32 value)
 	int     bit;
 	uint32  hash;
 	uint32	position;
-	char   *bitmap;
-	int32  *values;
+	char   *bitmap = HASHSET_GET_BITMAP(set);
+	int32  *values = HASHSET_GET_VALUES(set);
 	int     num_probes = 0; /* Counter for the number of probes */
 
 	if (set->hashfn_id == JENKINS_LOOKUP3_HASHFN_ID)
@@ -202,9 +198,6 @@ int4hashset_contains_element(int4hashset_t *set, int32 value)
 	}
 
 	position = hash % set->capacity;
-
-	bitmap = set->data;
-	values = (int32 *) (set->data + CEIL_DIV(set->capacity, 8));
 
 	while (true)
 	{
@@ -233,15 +226,10 @@ int4hashset_contains_element(int4hashset_t *set, int32 value)
 int32 *
 int4hashset_extract_sorted_elements(int4hashset_t *set)
 {
-	/* Allocate memory for the elements array */
-	int32 *elements = palloc(set->nelements * sizeof(int32));
-
-	/* Access the data array */
-	char *bitmap = set->data;
-	int32 *values = (int32 *)(set->data + CEIL_DIV(set->capacity, 8));
-
-	/* Counter for the number of extracted elements */
-	int32 nextracted = 0;
+	int32  *elements = palloc(set->nelements * sizeof(int32));
+	char   *bitmap = HASHSET_GET_BITMAP(set);
+	int32  *values = HASHSET_GET_VALUES(set);
+	int32	nextracted = 0;
 
 	/* Iterate through all elements */
 	for (int32 i = 0; i < set->capacity; i++)

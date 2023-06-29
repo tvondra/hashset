@@ -12,6 +12,8 @@
 #include "common/hashfn.h"
 
 #define CEIL_DIV(a, b) (((a) + (b) - 1) / (b))
+#define HASHSET_GET_BITMAP(set) ((set)->data)
+#define HASHSET_GET_VALUES(set) ((int32 *) ((set)->data + CEIL_DIV((set)->capacity, 8)))
 #define HASHSET_STEP 13
 #define JENKINS_LOOKUP3_HASHFN_ID 1
 #define MURMURHASH32_HASHFN_ID 2
