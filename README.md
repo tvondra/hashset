@@ -11,6 +11,12 @@ difference, equality check, and cardinality calculation.
 element. When multiple `NULL` values are present in the input, they are treated
 as a single `NULL`.
 
+Most functions in this extension are marked as `STRICT`, meaning that if any of
+the arguments are `NULL`, then the result is also `NULL`. Exceptions to this
+rule are [hashset_add()](#hashset_add) and
+[hashset_contains()](#hashset_contains), which have specific behaviors when
+handling `NULL`.
+
 ## Table of Contents
 1. [Version](#version)
 2. [Data Types](#data-types)
@@ -75,7 +81,10 @@ Initialize an empty int4hashset with optional parameters.
 
 `hashset_add(int4hashset, int) -> int4hashset`
 
-Adds an integer to an int4hashset.
+Adds an integer to an int4hashset. The function allows the addition of a `NULL`
+value to the set and treats it as a unique element. If the set already contains
+a `NULL` value, another `NULL` input is disregarded. If `NULL` is passed as the
+first argument, it is treated as an empty set.
 
 ```sql
 SELECT hashset_add(NULL, 1); -- {1}
@@ -95,6 +104,8 @@ Checks if an int4hashset contains a given integer.
 ```sql
 SELECT hashset_contains('{1}', 1); -- TRUE
 SELECT hashset_contains('{1}', 2); -- FALSE
+SELECT hashset_contains(NULL, NULL); -- NULL
+SELECT hashset_contains(NULL, 1); -- NULL
 ```
 
 If the *cardinality* of the hashset is zero (0), it is known that it doesn't
@@ -104,13 +115,6 @@ that case it returns `FALSE`.
 ```sql
 SELECT hashset_contains('{}', 1); -- FALSE
 SELECT hashset_contains('{}', NULL); -- FALSE
-```
-
-If the hashset is `NULL`, then the result is `NULL`.
-
-```sql
-SELECT hashset_contains(NULL, NULL); -- NULL
-SELECT hashset_contains(NULL, 1); -- NULL
 ```
 
 
@@ -185,13 +189,6 @@ Merges two int4hashsets into a new int4hashset.
 SELECT hashset_union('{1,2}', '{2,3}'); -- '{1,2,3}
 ```
 
-If any of the operands are `NULL`, the result is `NULL`.
-
-```sql
-SELECT hashset_union('{1}', NULL); -- NULL
-SELECT hashset_union(NULL, '{1}'); -- NULL
-```
-
 
 ### hashset_intersection()
 
@@ -202,13 +199,6 @@ Returns a new int4hashset that is the intersection of the two input sets.
 ```sql
 SELECT hashset_intersection('{1,2}', '{2,3}'); -- {2}
 SELECT hashset_intersection('{1,2,NULL}', '{2,3,NULL}'); -- {2,NULL}
-```
-
-If any of the operands are `NULL`, the result is `NULL`.
-
-```sql
-SELECT hashset_intersection('{1,2}', NULL); -- NULL
-SELECT hashset_intersection(NULL, '{2,3}'); -- NULL
 ```
 
 
@@ -225,13 +215,6 @@ SELECT hashset_difference('{1,2,NULL}', '{2,3,NULL}'); -- {1}
 SELECT hashset_difference('{1,2,NULL}', '{2,3}'); -- {1,NULL}
 ```
 
-If any of the operands are `NULL`, the result is `NULL`.
-
-```sql
-SELECT hashset_difference('{1,2}', NULL); -- NULL
-SELECT hashset_difference(NULL, '{2,3}'); -- NULL
-```
-
 
 ### hashset_symmetric_difference()
 
@@ -243,13 +226,6 @@ Returns a new int4hashset containing elements that are in either of the input se
 SELECT hashset_symmetric_difference('{1,2}', '{2,3}'); -- {1,3}
 SELECT hashset_symmetric_difference('{1,2,NULL}', '{2,3,NULL}'); -- {1,3}
 SELECT hashset_symmetric_difference('{1,2,NULL}', '{2,3}'); -- {1,3,NULL}
-```
-
-If any of the operands are `NULL`, the result is `NULL`.
-
-```sql
-SELECT hashset_symmetric_difference('{1,2}', NULL); -- NULL
-SELECT hashset_symmetric_difference(NULL, '{2,3}'); -- NULL
 ```
 
 
